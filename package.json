@@ -1,0 +1,66 @@
+{
+  "name": "@seam-agency/mascot-react",
+  "version": "0.1.1",
+  "description": "Procedural SVG mascot state machine for React.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "sync:workspace": "node ./scripts/sync-workspace.mjs",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test:ssr": "node ./tests/ssr.mjs",
+    "test:browser": "node ./tests/browser-smoke.cjs",
+    "test": "npm run build && npm run test:ssr && npm run test:browser",
+    "check": "npm run typecheck && npm run test",
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm run check"
+  },
+  "peerDependencies": {
+    "react": ">=18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "esbuild": "^0.28.1",
+    "playwright-core": "^1.55.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "tsup": {
+      "esbuild": "^0.28.1"
+    }
+  },
+  "publishConfig": {
+    "access": "restricted",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Seam-Agency/seam-mascot-react.git"
+  },
+  "homepage": "https://github.com/Seam-Agency/seam-mascot-react#readme",
+  "bugs": {
+    "url": "https://github.com/Seam-Agency/seam-mascot-react/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}
