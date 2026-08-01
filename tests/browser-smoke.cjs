@@ -254,33 +254,46 @@ buildSync({
     assert.ok(outwardReaction.tipRatios.every((ratio) => ratio > 1.06));
     assert.equal(outwardReaction.bodyTransform, null, "Reaction must not rotate");
 
-    await page.waitForFunction(() =>
-      window.mascotSmoke.ref.current?.getSnapshot()?.blinkAmount > 0.82
-    );
-    const blinkEyeHeights = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('[data-seam-mascot] > g > path'))
-        .slice(1)
-        .map((eye) => eye.getBBox().height)
-    );
+    const reactionRemainder = await page.evaluate(() => new Promise((resolve) => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const minimumEyeHeights = machine.eyes.map(() => Number.POSITIVE_INFINITY);
+      let minimumReactionAmount = 0;
+      let inwardTipRatios = [];
+
+      const sample = () => {
+        const snapshot = machine.getSnapshot();
+        machine.eyes.forEach((eye, index) => {
+          minimumEyeHeights[index] = Math.min(
+            minimumEyeHeights[index],
+            eye.getBBox().height
+          );
+        });
+
+        if (snapshot.reactionAmount < minimumReactionAmount) {
+          minimumReactionAmount = snapshot.reactionAmount;
+          inwardTipRatios = machine.idleTipModel.tips.map(({ tipIndex }) => {
+            const source = machine.geometry.star.body[tipIndex];
+            const current = machine.geometry.bodyBuffer[tipIndex];
+            return Math.hypot(current.x, current.y) /
+              Math.hypot(source.x, source.y);
+          });
+        }
+
+        if (snapshot.reacting) requestAnimationFrame(sample);
+        else resolve({ minimumEyeHeights, minimumReactionAmount, inwardTipRatios });
+      };
+
+      requestAnimationFrame(sample);
+    }));
     assert.ok(
-      blinkEyeHeights.every((height, index) => height < initialEyeHeights[index] * 0.3),
+      reactionRemainder.minimumEyeHeights.every(
+        (height, index) => height < initialEyeHeights[index] * 0.3
+      ),
       "Both eyes should blink in place"
     );
-
-    await page.waitForFunction(() =>
-      window.mascotSmoke.ref.current?.getSnapshot()?.reactionAmount < -0.03
-    );
-    const inwardTipRatios = await page.evaluate(() => {
-      const machine = window.mascotSmoke.ref.current.getMachine();
-      return machine.idleTipModel.tips.map(({ tipIndex }) => {
-        const source = machine.geometry.star.body[tipIndex];
-        const current = machine.geometry.bodyBuffer[tipIndex];
-        return Math.hypot(current.x, current.y) / Math.hypot(source.x, source.y);
-      });
-    });
-    assert.ok(inwardTipRatios.every((ratio) => ratio < 0.985));
-    await page.waitForFunction(() =>
-      window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
+    assert.ok(reactionRemainder.minimumReactionAmount < -0.03);
+    assert.ok(
+      reactionRemainder.inwardTipRatios.every((ratio) => ratio < 0.985)
     );
 
     const visuallyIdleMovingReaction = await page.evaluate(() => {
