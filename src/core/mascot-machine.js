@@ -23,6 +23,7 @@ const REACTION_MORPH_THRESHOLD = 0.18;
 // Pull the trail origin away from the sharp tail tips so the dither appears
 // to emerge from inside the moving silhouette rather than touch its edge.
 const DITHER_TRAIL_TIP_INSET = 0.24;
+const DEFAULT_TYPING_FOCUS = Object.freeze({ x: 0.82, y: -0.28 });
 
 const IDLE_VARIANTS = Object.freeze([
   "curious",
@@ -39,13 +40,6 @@ const IDLE_VARIANT_VALUES = Object.freeze([
   ...IDLE_VARIANTS
 ]);
 const IDLE_GAZE_PROFILES = Object.freeze({
-  typing: Object.freeze({
-    durationMinimum: 120,
-    durationMaximum: 210,
-    delayMinimum: 110,
-    delayMaximum: 280,
-    centerChance: 0.22
-  }),
   curious: Object.freeze({
     durationMinimum: 420,
     durationMaximum: 580,
@@ -752,6 +746,23 @@ class MascotStateMachine {
     this.idleVariantHoldDuration = 1000;
     this.idleVariantReleaseDuration = 500;
     this.idleVariantReleaseFrom = 0;
+    this.typingFocus = limitVector(
+      clamp(
+        Number.isFinite(options.typingFocus?.x)
+          ? options.typingFocus.x
+          : DEFAULT_TYPING_FOCUS.x,
+        -1,
+        1
+      ),
+      clamp(
+        Number.isFinite(options.typingFocus?.y)
+          ? options.typingFocus.y
+          : DEFAULT_TYPING_FOCUS.y,
+        -1,
+        1
+      ),
+      1
+    );
     this.curiousGaze = 0;
     this.curiousGazeFrom = 0;
     this.curiousGazeTarget = 0;
@@ -795,6 +806,8 @@ class MascotStateMachine {
     this.root.dataset.reacting = "false";
     this.root.dataset.blinking = "false";
     this.root.dataset.idleVariant = this.idleVariant;
+    this.root.dataset.typingFocusX = String(this.typingFocus.x);
+    this.root.dataset.typingFocusY = String(this.typingFocus.y);
     this.root.dataset.curiousGaze = "center";
     this.root.dataset.ambientPulsing = "false";
     this.render();
@@ -848,6 +861,7 @@ class MascotStateMachine {
       randomBlinking: this.randomBlinkActive,
       idleVariant: this.idleVariant,
       idleVariantAmount: this.idleVariantAmount,
+      typingFocus: Object.freeze({ ...this.typingFocus }),
       curiousGaze: this.curiousGaze,
       ambientPulsing: this.ambientPulseActive,
       ambientPulseAmount: this.ambientPulseAmount,
@@ -987,6 +1001,40 @@ class MascotStateMachine {
     this.render();
     this.lastFrameTime = performance.now();
     this.queueFrame();
+    return this;
+  }
+
+  setTypingFocus(nextFocus) {
+    const rawX = Number.isFinite(nextFocus?.x)
+      ? nextFocus.x
+      : DEFAULT_TYPING_FOCUS.x;
+    const rawY = Number.isFinite(nextFocus?.y)
+      ? nextFocus.y
+      : DEFAULT_TYPING_FOCUS.y;
+    const normalized = limitVector(
+      clamp(rawX, -1, 1),
+      clamp(rawY, -1, 1),
+      1
+    );
+
+    if (
+      Math.abs(normalized.x - this.typingFocus.x) < 0.01 &&
+      Math.abs(normalized.y - this.typingFocus.y) < 0.01
+    ) {
+      return this;
+    }
+
+    this.typingFocus.x = normalized.x;
+    this.typingFocus.y = normalized.y;
+    this.root.dataset.typingFocusX = normalized.x.toFixed(3);
+    this.root.dataset.typingFocusY = normalized.y.toFixed(3);
+
+    if (this.state === STATES.IDLE && this.idleVariant === "typing") {
+      this.emit();
+      this.render();
+      this.lastFrameTime = performance.now();
+      this.queueFrame();
+    }
     return this;
   }
 
@@ -1958,22 +2006,25 @@ class MascotStateMachine {
 
     if (this.idleVariant === "typing") {
       const typingAmount = idleVariantAmount;
-      const typingBeat = (Math.sin(idleVariantTime * 15.5) + 1) / 2;
-      const readingDrift = Math.sin(idleVariantTime * 7.4);
-      variantOffsetY = typingAmount * (0.16 + typingBeat * 0.12);
-      variantRotation = this.curiousGaze * typingAmount * 0.72;
-      variantScaleX = 1 + typingAmount * (0.004 + typingBeat * 0.005);
-      variantScaleY = 1 - typingAmount * (0.003 + typingBeat * 0.004);
-      variantEyeOffsetX = this.curiousGaze * typingAmount * 2.65;
-      variantEyeOffsetY = typingAmount * (0.08 + readingDrift * 0.12);
-      variantEyeScaleX[0] = 1 - typingAmount * (0.04 + typingBeat * 0.025);
-      variantEyeScaleX[1] =
-        1 - typingAmount * (0.04 + (1 - typingBeat) * 0.025);
-      variantEyeScaleY[0] = 1 - typingAmount * (0.08 + typingBeat * 0.09);
-      variantEyeScaleY[1] =
-        1 - typingAmount * (0.08 + (1 - typingBeat) * 0.09);
-      variantEyeLocalOffsetY[0] = readingDrift * typingAmount * 0.22;
-      variantEyeLocalOffsetY[1] = -readingDrift * typingAmount * 0.18;
+      const typingBeat = (Math.sin(idleVariantTime * 5.2) + 1) / 2;
+      const readingCycle = (idleVariantTime % 1.8) / 1.8;
+      const readingProgress = readingCycle < 0.82
+        ? smoothstep(readingCycle / 0.82)
+        : 1 - smoothOut((readingCycle - 0.82) / 0.18);
+      const readingSweep = (readingProgress - 0.5) * 0.58;
+      variantOffsetX = this.typingFocus.x * typingAmount * 0.18;
+      variantOffsetY = typingAmount * (0.12 + typingBeat * 0.08);
+      variantRotation = this.typingFocus.x * typingAmount * 0.48;
+      variantScaleX = 1 + typingAmount * (0.003 + typingBeat * 0.003);
+      variantScaleY = 1 - typingAmount * (0.002 + typingBeat * 0.003);
+      variantEyeOffsetX = this.typingFocus.x * typingAmount * 2.75;
+      variantEyeOffsetY = typingAmount * (
+        this.typingFocus.y * 0.82 + readingSweep
+      );
+      variantEyeScaleX[0] = 1 - typingAmount * (0.035 + typingBeat * 0.015);
+      variantEyeScaleX[1] = variantEyeScaleX[0];
+      variantEyeScaleY[0] = 1 - typingAmount * (0.08 + typingBeat * 0.035);
+      variantEyeScaleY[1] = variantEyeScaleY[0];
     } else if (this.idleVariant === "curious") {
       const curiousDrift = 0.88 + Math.sin(idleVariantTime * 2.1) * 0.12;
       const curiousAmount = idleVariantAmount * curiousDrift;

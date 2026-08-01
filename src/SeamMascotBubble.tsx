@@ -329,6 +329,8 @@ export function SeamMascotBubble({
     let lastLeft = Number.NaN;
     let lastTop = Number.NaN;
     let lastPlacement = "";
+    let lastFocusX = Number.NaN;
+    let lastFocusY = Number.NaN;
 
     bubble.dataset.ready = "false";
 
@@ -412,6 +414,24 @@ export function SeamMascotBubble({
           const nextTop = roundToDevicePixel(
             clamp(selected.top + nudgeY, edgePadding, maximumTop)
           );
+          const focusDeltaX = nextLeft + width / 2 - anchor.x;
+          const focusDeltaY = nextTop + height / 2 - anchor.y;
+          const focusDistance = Math.hypot(focusDeltaX, focusDeltaY);
+
+          if (visible && focusDistance > 1) {
+            const focusX = focusDeltaX / focusDistance;
+            const focusY = focusDeltaY / focusDistance;
+            if (
+              !Number.isFinite(lastFocusX) ||
+              !Number.isFinite(lastFocusY) ||
+              Math.abs(focusX - lastFocusX) > 0.015 ||
+              Math.abs(focusY - lastFocusY) > 0.015
+            ) {
+              mascotRef.current?.setTypingFocus({ x: focusX, y: focusY });
+              lastFocusX = focusX;
+              lastFocusY = focusY;
+            }
+          }
 
           if (nextLeft !== lastLeft) {
             bubble.style.left = `${nextLeft}px`;
@@ -456,7 +476,8 @@ export function SeamMascotBubble({
     mascotClearance,
     edgePadding,
     nudgeX,
-    nudgeY
+    nudgeY,
+    visible
   ]);
 
   const palette = theme === "dark"

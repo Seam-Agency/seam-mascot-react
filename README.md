@@ -10,7 +10,7 @@ A lightweight React component for Seam's procedural SVG mascot. It morphs from a
 - Blinks procedurally during idle with randomized timing and occasional double blinks.
 - Rotates through distinct ambient idle moods without leaving the top-level `idle` state.
 - Supports server-side rendering and respects `prefers-reduced-motion`.
-- Ships with TypeScript declarations and no runtime dependencies beyond React.
+- Ships with TypeScript declarations; React is a peer dependency and the HTML bubble uses `@lisse/react` for its smooth action surface.
 
 ## Installation
 
@@ -130,7 +130,7 @@ export function ControlledMascot() {
 
 `moveTo` uses normalized `0..1` coordinates by default. To use SVG coordinates, pass `{ x: 800, y: 240, unit: "svg" }`.
 
-The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setState`, `setDebugState`, `setIdleVariant`, `send`, `getSnapshot`, and `getMachine`.
+The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setState`, `setDebugState`, `setIdleVariant`, `setTypingFocus`, `send`, `getSnapshot`, and `getMachine`.
 
 ## Speech bubble
 
@@ -174,7 +174,7 @@ The optional `action` stays on the corner nearest the mascot and follows the bub
 `SeamMascotTypewriter` reveals plain text with punctuation-aware timing while reserving the final text size from the first frame, so the bubble does not resize character by character. Use a regular array for multiple messages at one mascot location, then move the mascot only after the final message:
 
 ```tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SeamMascotBubble,
   SeamMascotTypewriter
@@ -188,6 +188,10 @@ const messages = [
 const [messageIndex, setMessageIndex] = useState(0);
 const [typingComplete, setTypingComplete] = useState(false);
 const [revealAll, setRevealAll] = useState(false);
+
+useEffect(() => {
+  mascotRef.current?.setIdleVariant("typing");
+}, [messageIndex]);
 
 function continueDialogue() {
   if (!typingComplete) {
@@ -211,7 +215,10 @@ function continueDialogue() {
     key={messageIndex}
     text={messages[messageIndex]}
     revealAll={revealAll}
-    onComplete={() => setTypingComplete(true)}
+    onComplete={() => {
+      setTypingComplete(true);
+      mascotRef.current?.setIdleVariant("auto");
+    }}
   />
 </SeamMascotBubble>
 ```
@@ -219,6 +226,10 @@ function continueDialogue() {
 `speed`, `startDelay`, and `punctuationDelay` tune the cadence. Set `active={false}` while the mascot is travelling to pause without losing progress, pass `cursor={false}` to remove the cursor, or set `revealAll` to finish the current message immediately. Reduced-motion users receive the complete text without the typing animation.
 
 The original SVG-contained `speechBubble` and `speechBubbleOptions` props remain available for self-contained SVG exports. Use `SeamMascotBubble` for product UI where native-resolution text matters.
+
+### Full product tour
+
+See [Building a product tour](docs/TOUR_DEMO.md) for the complete multi-location controller, DOM-to-SVG coordinate conversion, arrival guard, multi-message typing lifecycle, bubble-aware reading focus, responsive behavior, accessibility notes, and testing checklist.
 
 ## Click reaction
 
@@ -238,7 +249,7 @@ Independent idle blinks use a randomized `1800–5200ms` delay and `110–180ms`
 
 ## Ambient idle moods
 
-The default `idleVariant="auto"` mode gives the stationary mascot seven occasional behaviors: curious, bored, shy, surprised, squish, float, and deep-breath. Curious alternates its gaze, bored scans slowly with half-lidded eyes, shy looks down and aside, and surprised briefly widens both eyes. Each behavior enters and leaves through a short smooth-out transition while the machine remains in `idle`, so application logic listening to the top-level state stays stable. The explicit `typing` variant adds quick reading saccades and a subtle alternating eye rhythm for streamed or typewritten copy; it is intentionally excluded from the random `auto` rotation.
+The default `idleVariant="auto"` mode gives the stationary mascot seven occasional behaviors: curious, bored, shy, surprised, squish, float, and deep-breath. Curious alternates its gaze, bored scans slowly with half-lidded eyes, shy looks down and aside, and surprised briefly widens both eyes. Each behavior enters and leaves through a short smooth-out transition while the machine remains in `idle`, so application logic listening to the top-level state stays stable. The explicit `typing` variant holds its gaze toward the writing surface and moves both eyes through a subtle vertical reading scan; it is intentionally excluded from the random `auto` rotation.
 
 Lock a mood while tuning or presenting it:
 
@@ -247,6 +258,8 @@ Lock a mood while tuning or presenting it:
 ```
 
 Supported values are `auto`, `rest`, `typing`, `curious`, `bored`, `shy`, `surprised`, `squish`, `float`, and `deep-breath`. The imperative ref exposes the same control through `setIdleVariant`. `snapshot.idleVariant` reports the visible mood and `snapshot.idleVariantAmount` reports its current normalized envelope. Switching an active explicit mood back to `auto` eases the expression out before the procedural rotation resumes.
+
+`SeamMascotBubble` automatically points the typing gaze toward its resolved placement. For a custom writing surface, pass a normalized `typingFocus={{ x, y }}` direction or call `mascotRef.current?.setTypingFocus({ x, y })`; `snapshot.typingFocus` exposes the current target.
 
 The regular idle loop also plays a lighter version of the click reaction at long random intervals: the spikes expand, pull inward, and settle without entering the click-reaction state. `snapshot.ambientPulsing` and `snapshot.ambientPulseAmount` expose that motion, while `snapshot.curiousGaze` reports the live gaze from `-1` (left) to `1` (right).
 
@@ -299,6 +312,8 @@ npm run pack:check
 ```
 
 The browser test uses a locally installed Chrome binary. Set `CHROME_PATH` when Chrome is installed in a non-standard location.
+
+Coding agents should read [AGENTS.md](AGENTS.md) before modifying or integrating the package. It documents source boundaries, public API wiring, product-tour state ownership, performance constraints, testing expectations, and the release procedure.
 
 After changing the source demo engine or SVG paths, synchronize the package copy:
 

@@ -157,6 +157,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
       reactionOnClick = true,
       debugState = "auto",
       idleVariant = "auto",
+      typingFocus,
       ditherTrail = false,
       ditherTrailIntensity = 0,
       ditherTrailScale = 1,
@@ -319,6 +320,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
         timing,
         idleMotion,
         idleVariant,
+        typingFocus,
         trailSource: ditherSourceRef.current,
         speechBubble: speechBubbleMounted
           ? {
@@ -358,6 +360,10 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
     }, [idleVariant]);
 
     useEffect(() => {
+      machineRef.current?.setTypingFocus(typingFocus);
+    }, [typingFocus?.x, typingFocus?.y]);
+
+    useEffect(() => {
       if (paused) machineRef.current?.pause();
       else machineRef.current?.resume();
     }, [paused]);
@@ -375,6 +381,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
         setState: (state, options) => machineRef.current?.setState(state, options),
         setDebugState: (state) => machineRef.current?.setDebugState(state),
         setIdleVariant: (variant) => machineRef.current?.setIdleVariant(variant),
+        setTypingFocus: (target) => machineRef.current?.setTypingFocus(target),
         send: (event, payload) => machineRef.current?.send(event, payload),
         getSnapshot: () => machineRef.current?.getSnapshot() ?? null,
         getMachine: () => machineRef.current,

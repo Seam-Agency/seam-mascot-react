@@ -1,6 +1,6 @@
 {
   "name": "@seam-agency/mascot-react",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Procedural SVG mascot state machine for React.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -15,7 +15,9 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "AGENTS.md",
+    "docs"
   ],
   "sideEffects": false,
   "scripts": {

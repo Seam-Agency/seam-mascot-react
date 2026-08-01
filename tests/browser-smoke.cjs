@@ -214,14 +214,14 @@ buildSync({
       window.mascotSmoke.ref.current?.getSnapshot()?.randomBlinking === false
     );
 
-    await page.evaluate(() =>
-      window.mascotSmoke.ref.current.setIdleVariant("typing")
-    );
+    await page.evaluate(() => {
+      window.mascotSmoke.ref.current.setTypingFocus({ x: -0.92, y: -0.32 });
+      window.mascotSmoke.ref.current.setIdleVariant("typing");
+    });
     await page.waitForFunction(() => {
       const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
       return snapshot?.idleVariant === "typing" &&
         snapshot.idleVariantAmount > 0.98 &&
-        Math.abs(snapshot.curiousGaze) > 0.8 &&
         snapshot.randomBlinking === false;
     });
     const typingIdle = await page.evaluate(() => {
@@ -231,6 +231,7 @@ buildSync({
         const y = eye.map((point) => point.y);
         return {
           centerX: (Math.max(...x) + Math.min(...x)) / 2,
+          centerY: (Math.max(...y) + Math.min(...y)) / 2,
           height: Math.max(...y) - Math.min(...y)
         };
       });
@@ -245,23 +246,55 @@ buildSync({
     });
     assert.equal(typingIdle.snapshot.state, "idle");
     assert.equal(typingIdle.dataVariant, "typing");
+    assert.ok(typingIdle.snapshot.typingFocus.x < -0.85);
+    assert.ok(typingIdle.snapshot.typingFocus.y < -0.25);
     assert.ok(
       typingIdle.eyes.every(
         (eye, index) =>
-          Math.abs(eye.centerX - typingIdle.starEyes[index].centerX) > 1.5 &&
+          eye.centerX - typingIdle.starEyes[index].centerX < -1.5 &&
           eye.height < initialEyeHeights[index] * 0.94 &&
           eye.height > initialEyeHeights[index] * 0.72
       ),
-      "Typing eyes should scan together with a focused, alternating squash"
+      "Typing eyes should hold their focus toward the reading surface"
     );
-    const initialTypingGazeSign = Math.sign(
-      typingIdle.snapshot.curiousGaze
+    const typingReadingSamples = await page.evaluate(() => new Promise(
+      (resolve) => {
+        const machine = window.mascotSmoke.ref.current.getMachine();
+        const samples = [];
+        const sample = () => {
+          samples.push(machine.geometry.eyeBuffers.map((eye) => {
+            const y = eye.map((point) => point.y);
+            return (Math.max(...y) + Math.min(...y)) / 2;
+          }));
+          if (samples.length >= 120) {
+            resolve(samples);
+            return;
+          }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }
+    ));
+    const typingEyeRanges = [0, 1].map((eyeIndex) => {
+      const values = typingReadingSamples.map((sample) => sample[eyeIndex]);
+      return Math.max(...values) - Math.min(...values);
+    });
+    const typingEyeSyncError = Math.max(
+      ...typingReadingSamples.map((sample) =>
+        Math.abs(
+          (sample[0] - typingReadingSamples[0][0]) -
+          (sample[1] - typingReadingSamples[0][1])
+        )
+      )
     );
-    await page.waitForFunction((gazeSign) => {
-      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
-      return snapshot?.idleVariant === "typing" &&
-        snapshot.curiousGaze * gazeSign < -0.8;
-    }, initialTypingGazeSign);
+    assert.ok(
+      typingEyeRanges.every((range) => range > 0.3),
+      "Typing eyes should gently scan the reading surface vertically"
+    );
+    assert.ok(
+      typingEyeSyncError < 0.08,
+      "Typing eyes should read vertically together without alternating"
+    );
     const typingReleaseSamples = await page.evaluate(() => new Promise(
       (resolve) => {
         window.mascotSmoke.ref.current.setIdleVariant("auto");

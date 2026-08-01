@@ -139,6 +139,8 @@ export interface MascotSnapshot {
   readonly randomBlinking: boolean;
   readonly idleVariant: MascotIdleVariant;
   readonly idleVariantAmount: number;
+  /** Normalized point the typing expression is reading toward. */
+  readonly typingFocus: Readonly<Point>;
   /** Procedural curious gaze from -1 (left) to 1 (right). */
   readonly curiousGaze: number;
   readonly ambientPulsing: boolean;
@@ -236,6 +238,7 @@ export interface MascotMachine {
   setState(state: MascotState, options?: MascotMoveOptions): MascotMachine;
   setDebugState(state: MascotDebugState | null): MascotMachine;
   setIdleVariant(variant: MascotIdleVariantMode): MascotMachine;
+  setTypingFocus(target?: Partial<Point> | null): MascotMachine;
   follow(x: number, y: number): MascotMachine;
   moveTo(
     target: number | MascotMoveTarget,
@@ -258,6 +261,7 @@ export interface SeamMascotHandle {
   setState(state: MascotState, options?: MascotMoveOptions): void;
   setDebugState(state: MascotDebugState | null): void;
   setIdleVariant(variant: MascotIdleVariantMode): void;
+  setTypingFocus(target?: Partial<Point> | null): void;
   send(event: MascotEvent, payload?: Record<string, unknown>): void;
   getSnapshot(): MascotSnapshot | null;
   getMachine(): MascotMachine | null;
@@ -307,6 +311,8 @@ export interface SeamMascotProps
   debugState?: MascotDebugState;
   /** Randomize stationary ambient behavior, or lock a variant for debugging. */
   idleVariant?: MascotIdleVariantMode;
+  /** Normalized direction the typing expression should read toward. */
+  typingFocus?: Partial<Point>;
   /** Render the velocity trail from the moving form's rear tail edge. */
   ditherTrail?: boolean;
   /** Normalized dither density from 0 (subtle) to 1 (dense). */
