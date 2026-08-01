@@ -231,6 +231,56 @@ buildSync({
       window.mascotSmoke.ref.current?.getSnapshot()?.ambientPulsing === false
     );
 
+    await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const recording = {
+        started: false,
+        complete: false,
+        maximumBlinkAmount: 0,
+        minimumEyeHeights: machine.eyes.map(() => Number.POSITIVE_INFINITY),
+        minimumReactionAmount: 0,
+        inwardTipRatios: []
+      };
+      window.reactionRecording = recording;
+
+      const sample = () => {
+        const snapshot = machine.getSnapshot();
+        if (snapshot.reacting) recording.started = true;
+
+        if (recording.started) {
+          recording.maximumBlinkAmount = Math.max(
+            recording.maximumBlinkAmount,
+            snapshot.blinkAmount
+          );
+          machine.eyes.forEach((eye, index) => {
+            recording.minimumEyeHeights[index] = Math.min(
+              recording.minimumEyeHeights[index],
+              eye.getBBox().height
+            );
+          });
+
+          if (snapshot.reactionAmount < recording.minimumReactionAmount) {
+            recording.minimumReactionAmount = snapshot.reactionAmount;
+            recording.inwardTipRatios = machine.idleTipModel.tips.map(
+              ({ tipIndex }) => {
+                const source = machine.geometry.star.body[tipIndex];
+                const current = machine.geometry.bodyBuffer[tipIndex];
+                return Math.hypot(current.x, current.y) /
+                  Math.hypot(source.x, source.y);
+              }
+            );
+          }
+        }
+
+        if (recording.started && !snapshot.reacting) {
+          recording.complete = true;
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+
+      requestAnimationFrame(sample);
+    });
     await page.mouse.click(600, 300);
     await page.waitForFunction(() =>
       window.mascotSmoke.ref.current?.getSnapshot()?.reactionAmount > 0.08
@@ -254,37 +304,9 @@ buildSync({
     assert.ok(outwardReaction.tipRatios.every((ratio) => ratio > 1.06));
     assert.equal(outwardReaction.bodyTransform, null, "Reaction must not rotate");
 
-    const reactionRemainder = await page.evaluate(() => new Promise((resolve) => {
-      const machine = window.mascotSmoke.ref.current.getMachine();
-      const minimumEyeHeights = machine.eyes.map(() => Number.POSITIVE_INFINITY);
-      let minimumReactionAmount = 0;
-      let inwardTipRatios = [];
-
-      const sample = () => {
-        const snapshot = machine.getSnapshot();
-        machine.eyes.forEach((eye, index) => {
-          minimumEyeHeights[index] = Math.min(
-            minimumEyeHeights[index],
-            eye.getBBox().height
-          );
-        });
-
-        if (snapshot.reactionAmount < minimumReactionAmount) {
-          minimumReactionAmount = snapshot.reactionAmount;
-          inwardTipRatios = machine.idleTipModel.tips.map(({ tipIndex }) => {
-            const source = machine.geometry.star.body[tipIndex];
-            const current = machine.geometry.bodyBuffer[tipIndex];
-            return Math.hypot(current.x, current.y) /
-              Math.hypot(source.x, source.y);
-          });
-        }
-
-        if (snapshot.reacting) requestAnimationFrame(sample);
-        else resolve({ minimumEyeHeights, minimumReactionAmount, inwardTipRatios });
-      };
-
-      requestAnimationFrame(sample);
-    }));
+    await page.waitForFunction(() => window.reactionRecording?.complete);
+    const reactionRemainder = await page.evaluate(() => window.reactionRecording);
+    assert.ok(reactionRemainder.maximumBlinkAmount > 0.82);
     assert.ok(
       reactionRemainder.minimumEyeHeights.every(
         (height, index) => height < initialEyeHeights[index] * 0.3
