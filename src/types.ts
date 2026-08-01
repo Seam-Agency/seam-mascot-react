@@ -68,6 +68,16 @@ export interface MascotIdleMotionOptions {
   rippleAmplitude?: number;
   /** Multiplier for independent idle spike pulse speed. */
   tipSpeed?: number;
+  /** Minimum random delay between idle blinks, in milliseconds. */
+  blinkMinimumDelay?: number;
+  /** Maximum random delay between idle blinks, in milliseconds. */
+  blinkMaximumDelay?: number;
+  /** Minimum blink duration, in milliseconds. */
+  blinkMinimumDuration?: number;
+  /** Maximum blink duration, in milliseconds. */
+  blinkMaximumDuration?: number;
+  /** Chance of a short second blink, from 0 to 1. */
+  doubleBlinkChance?: number;
 }
 
 export interface MascotSnapshot {
@@ -90,6 +100,7 @@ export interface MascotSnapshot {
   readonly reactionProgress: number;
   readonly reactionAmount: number;
   readonly blinkAmount: number;
+  readonly randomBlinking: boolean;
   readonly debugState: Exclude<MascotDebugState, "auto"> | null;
 }
 

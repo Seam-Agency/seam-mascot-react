@@ -6,6 +6,7 @@ A lightweight React component for Seam's procedural SVG mascot. It morphs from a
 - Follows the pointer across both axes using velocity, acceleration, and spring physics.
 - Includes velocity-reactive tail motion, a neutral direction-change bridge, and procedural idle breathing.
 - Plays a coordinated spike pop and blink when clicked while idle or settling.
+- Blinks procedurally during idle with randomized timing and occasional double blinks.
 - Supports server-side rendering and respects `prefers-reduced-motion`.
 - Ships with TypeScript declarations and no runtime dependencies beyond React.
 
@@ -85,6 +86,8 @@ Disable the interaction or trigger it manually with the ref API:
 
 The reaction is skipped when `prefers-reduced-motion: reduce` is active.
 
+Independent idle blinks use a randomized `1800–5200ms` delay and `110–180ms` duration by default. Approximately 18% of them become a short double blink. The scheduler also runs in fixed idle debug mode and pauses during click reactions.
+
 ## Debug states
 
 Lock the mascot to a form without moving it:
@@ -103,7 +106,14 @@ Supported values are `auto`, `idle`, `launching`, `moving`, and `settling`.
   physics={{ maximumSpeed: 900, stiffness: 30, damping: 10.8 }}
   tailMotion={{ minimumRate: 3.2, maximumRate: 11.5, response: 6.5 }}
   timing={{ morphIn: 250, morphOut: 150, turn: 280, reaction: 400 }}
-  idleMotion={{ breathAmplitude: 0.055, tipAmplitude: 0.105, tipSpeed: 1.45 }}
+  idleMotion={{
+    breathAmplitude: 0.055,
+    tipAmplitude: 0.105,
+    tipSpeed: 1.45,
+    blinkMinimumDelay: 1800,
+    blinkMaximumDelay: 5200,
+    doubleBlinkChance: 0.18
+  }}
 />
 ```
 

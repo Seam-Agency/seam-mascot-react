@@ -409,8 +409,40 @@ class MascotStateMachine {
         0.25,
         options.idleMotion?.tipSpeed ??
           readNumber("--mascot-idle-tip-speed", 1.45)
+      ),
+      blinkMinimumDelay: Math.max(
+        500,
+        options.idleMotion?.blinkMinimumDelay ??
+          readDuration("--mascot-blink-min-delay", 1800)
+      ),
+      blinkMaximumDelay: Math.max(
+        500,
+        options.idleMotion?.blinkMaximumDelay ??
+          readDuration("--mascot-blink-max-delay", 5200)
+      ),
+      blinkMinimumDuration: Math.max(
+        80,
+        options.idleMotion?.blinkMinimumDuration ??
+          readDuration("--mascot-blink-min-duration", 110)
+      ),
+      blinkMaximumDuration: Math.max(
+        80,
+        options.idleMotion?.blinkMaximumDuration ??
+          readDuration("--mascot-blink-max-duration", 180)
+      ),
+      doubleBlinkChance: clamp01(
+        options.idleMotion?.doubleBlinkChance ??
+          readNumber("--mascot-double-blink-chance", 0.18)
       )
     };
+    this.idleMotion.blinkMaximumDelay = Math.max(
+      this.idleMotion.blinkMinimumDelay,
+      this.idleMotion.blinkMaximumDelay
+    );
+    this.idleMotion.blinkMaximumDuration = Math.max(
+      this.idleMotion.blinkMinimumDuration,
+      this.idleMotion.blinkMaximumDuration
+    );
 
     this.physics = {
       stiffness: options.physics?.stiffness ?? 30,
@@ -548,6 +580,12 @@ class MascotStateMachine {
     this.reactionAmount = 0;
     this.blinkAmount = 0;
     this.reacting = false;
+    this.randomBlinkActive = false;
+    this.randomBlinkElapsed = 0;
+    this.randomBlinkDelay = 0;
+    this.randomBlinkDuration = 140;
+    this.randomBlinkAmount = 0;
+    this.pendingRandomBlinks = 0;
     this.tailPhase = 0;
     this.tailRate = this.tailMotion.minimumRate;
     this.listeners = new Set();
@@ -557,12 +595,14 @@ class MascotStateMachine {
     this.destroyed = false;
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     this.resetIdleTips();
+    this.scheduleRandomBlink();
 
     this.tick = this.tick.bind(this);
     this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.root.dataset.state = STATES.IDLE;
     this.root.dataset.reacting = "false";
+    this.root.dataset.blinking = "false";
     this.render();
   }
 
@@ -609,7 +649,8 @@ class MascotStateMachine {
       reacting: this.reacting,
       reactionProgress: this.reactionProgress,
       reactionAmount: this.reactionAmount,
-      blinkAmount: this.blinkAmount,
+      blinkAmount: Math.max(this.blinkAmount, this.randomBlinkAmount),
+      randomBlinking: this.randomBlinkActive,
       debugState: this.debugState
     });
   }
@@ -801,6 +842,7 @@ class MascotStateMachine {
     this.reactionAmount = 0;
     this.blinkAmount = 0;
     this.root.dataset.reacting = "true";
+    this.scheduleRandomBlink();
     for (const state of this.idleTipStates) {
       state.active = false;
       state.pulse = 0;
@@ -859,6 +901,75 @@ class MascotStateMachine {
     if (progress < 1) return;
     this.resetReaction();
     this.resetIdleTips();
+    this.scheduleRandomBlink();
+    this.emit();
+  }
+
+  scheduleRandomBlink(delay) {
+    this.randomBlinkActive = false;
+    this.randomBlinkElapsed = 0;
+    this.randomBlinkAmount = 0;
+    this.pendingRandomBlinks = 0;
+    this.randomBlinkDelay = delay ?? randomBetween(
+      this.idleMotion.blinkMinimumDelay,
+      this.idleMotion.blinkMaximumDelay
+    );
+    this.root.dataset.blinking = "false";
+  }
+
+  startRandomBlink(isRepeat = false) {
+    this.randomBlinkActive = true;
+    this.randomBlinkElapsed = 0;
+    this.randomBlinkAmount = 0;
+    this.randomBlinkDuration = randomBetween(
+      this.idleMotion.blinkMinimumDuration,
+      this.idleMotion.blinkMaximumDuration
+    );
+    if (!isRepeat) {
+      this.pendingRandomBlinks =
+        Math.random() < this.idleMotion.doubleBlinkChance ? 1 : 0;
+    }
+    this.root.dataset.blinking = "true";
+    this.emit();
+  }
+
+  updateRandomBlink(deltaTime) {
+    if (
+      this.reacting ||
+      this.state !== STATES.IDLE ||
+      this.reducedMotion.matches
+    ) {
+      return;
+    }
+
+    if (!this.randomBlinkActive) {
+      this.randomBlinkDelay -= deltaTime;
+      if (this.randomBlinkDelay > 0) return;
+      const isRepeat = this.pendingRandomBlinks > 0;
+      if (isRepeat) this.pendingRandomBlinks -= 1;
+      this.startRandomBlink(isRepeat);
+      return;
+    }
+
+    this.randomBlinkElapsed += deltaTime;
+    const progress = clamp01(
+      this.randomBlinkElapsed / this.randomBlinkDuration
+    );
+    this.randomBlinkAmount = progress < 0.4
+      ? smoothOut(progress / 0.4)
+      : 1 - smoothOut((progress - 0.4) / 0.6);
+
+    if (progress < 1) return;
+    this.randomBlinkActive = false;
+    this.randomBlinkElapsed = 0;
+    this.randomBlinkAmount = 0;
+    this.root.dataset.blinking = "false";
+    this.randomBlinkDelay = this.pendingRandomBlinks > 0
+      ? randomBetween(85, 145)
+      : randomBetween(
+          this.idleMotion.blinkMinimumDelay,
+          this.idleMotion.blinkMaximumDelay
+        );
     this.emit();
   }
 
@@ -1051,6 +1162,7 @@ class MascotStateMachine {
   update(deltaTime) {
     const deltaSeconds = deltaTime / 1000;
     this.updateReaction(deltaTime);
+    this.updateRandomBlink(deltaTime);
 
     if (this.debugState !== null) {
       this.updateTailMotion(deltaTime);
@@ -1362,6 +1474,10 @@ class MascotStateMachine {
     }
     this.body.setAttribute("d", smoothClosedPath(bodyBuffer));
 
+    const combinedBlinkAmount = Math.max(
+      this.blinkAmount,
+      this.randomBlinkAmount
+    );
     for (let eyeIndex = 0; eyeIndex < this.eyes.length; eyeIndex += 1) {
       const buffer = this.geometry.eyeBuffers[eyeIndex];
       const starEye = this.geometry.star.eyes[eyeIndex];
@@ -1391,9 +1507,9 @@ class MascotStateMachine {
         );
       }
 
-      if (this.blinkAmount > 0) {
+      if (combinedBlinkAmount > 0) {
         const eyeBounds = getPointBounds(buffer);
-        const blinkScaleY = lerp(1, 0.06, this.blinkAmount);
+        const blinkScaleY = lerp(1, 0.06, combinedBlinkAmount);
         for (const point of buffer) {
           point.y = eyeBounds.centerY +
             (point.y - eyeBounds.centerY) * blinkScaleY;
@@ -1437,6 +1553,9 @@ class MascotStateMachine {
     if (nextState === STATES.IDLE) {
       this.idleElapsed = 0;
       this.resetIdleTips();
+      if (!this.reacting) this.scheduleRandomBlink();
+    } else {
+      this.scheduleRandomBlink();
     }
     this.emit();
   }

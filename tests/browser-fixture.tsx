@@ -25,6 +25,13 @@ createRoot(container).render(
     interactive: true,
     bodyColor: "#ffffff",
     eyeColor: "#050505",
+    idleMotion: {
+      blinkMinimumDelay: 180,
+      blinkMaximumDelay: 280,
+      blinkMinimumDuration: 130,
+      blinkMaximumDuration: 180,
+      doubleBlinkChance: 0.35
+    },
     style: { width: "1200px", height: "600px", background: "#050505" },
     onStateChange: (snapshot) => snapshots.push(snapshot)
   })

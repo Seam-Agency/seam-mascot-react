@@ -68,6 +68,30 @@ buildSync({
         .slice(1)
         .map((eye) => eye.getBBox().height)
     );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.randomBlinking && snapshot.blinkAmount > 0.75;
+    });
+    const proceduralBlink = await page.evaluate(() => ({
+      snapshot: window.mascotSmoke.ref.current.getSnapshot(),
+      duration: window.mascotSmoke.ref.current.getMachine().randomBlinkDuration,
+      eyeHeights: Array.from(
+        document.querySelectorAll('[data-seam-mascot] > g > path')
+      ).slice(1).map((eye) => eye.getBBox().height)
+    }));
+    assert.equal(proceduralBlink.snapshot.state, "idle");
+    assert.equal(proceduralBlink.snapshot.reacting, false);
+    assert.ok(proceduralBlink.duration >= 130 && proceduralBlink.duration <= 180);
+    assert.ok(
+      proceduralBlink.eyeHeights.every(
+        (height, index) => height < initialEyeHeights[index] * 0.4
+      ),
+      "Procedural blink should close both eyes"
+    );
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.randomBlinking === false
+    );
+
     await page.mouse.click(600, 300);
     await page.waitForFunction(() =>
       window.mascotSmoke.ref.current?.getSnapshot()?.reactionAmount > 0.08
