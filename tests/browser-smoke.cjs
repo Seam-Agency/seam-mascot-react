@@ -132,19 +132,24 @@ buildSync({
       const currentEyeHeights = Array.from(
         document.querySelectorAll('[data-seam-mascot] > g > path')
       ).slice(1).map((eye) => eye.getBBox().height);
-      return snapshot?.randomBlinking &&
+      const blinkIsClosed = snapshot?.randomBlinking &&
         snapshot.blinkAmount > 0.75 &&
         currentEyeHeights.every(
           (height, index) => height < openEyeHeights[index] * 0.4
         );
+      if (blinkIsClosed) {
+        window.proceduralBlinkCapture = {
+          snapshot,
+          duration: window.mascotSmoke.ref.current.getMachine()
+            .randomBlinkDuration,
+          eyeHeights: currentEyeHeights
+        };
+      }
+      return blinkIsClosed;
     }, initialEyeHeights);
-    const proceduralBlink = await page.evaluate(() => ({
-      snapshot: window.mascotSmoke.ref.current.getSnapshot(),
-      duration: window.mascotSmoke.ref.current.getMachine().randomBlinkDuration,
-      eyeHeights: Array.from(
-        document.querySelectorAll('[data-seam-mascot] > g > path')
-      ).slice(1).map((eye) => eye.getBBox().height)
-    }));
+    const proceduralBlink = await page.evaluate(
+      () => window.proceduralBlinkCapture
+    );
     assert.equal(proceduralBlink.snapshot.state, "idle");
     assert.equal(proceduralBlink.snapshot.reacting, false);
     assert.ok(proceduralBlink.duration >= 130 && proceduralBlink.duration <= 180);
