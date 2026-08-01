@@ -5,6 +5,7 @@ A lightweight React component for Seam's procedural SVG mascot. It morphs from a
 - Runs animation through a single `requestAnimationFrame` state machine without re-rendering React on every frame.
 - Follows the pointer across both axes using velocity, acceleration, and spring physics.
 - Includes velocity-reactive tail motion, a neutral direction-change bridge, and procedural idle breathing.
+- Plays a coordinated spike pop and blink when clicked while idle or settling.
 - Supports server-side rendering and respects `prefers-reduced-motion`.
 - Ships with TypeScript declarations and no runtime dependencies beyond React.
 
@@ -68,7 +69,21 @@ export function ControlledMascot() {
 
 `moveTo` uses normalized `0..1` coordinates by default. To use SVG coordinates, pass `{ x: 800, y: 240, unit: "svg" }`.
 
-The ref also exposes `start`, `pause`, `resume`, `follow`, `setState`, `setDebugState`, `send`, `getSnapshot`, and `getMachine`.
+The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setState`, `setDebugState`, `send`, `getSnapshot`, and `getMachine`.
+
+## Click reaction
+
+Clicking the mascot while it is idle or settling pushes every spike slightly beyond its resting shape, pulls them inward, and releases them while the eyes blink once. It also works with `debugState="idle"`, so the interaction responds before the full idle transition has completed. The 400ms reaction uses the transitions.dev smooth-out curve between phases.
+
+Disable the interaction or trigger it manually with the ref API:
+
+```tsx
+<SeamMascot reactionOnClick={false} />
+
+<button onClick={() => mascot.current?.playReaction()}>React</button>
+```
+
+The reaction is skipped when `prefers-reduced-motion: reduce` is active.
 
 ## Debug states
 
@@ -87,7 +102,7 @@ Supported values are `auto`, `idle`, `launching`, `moving`, and `settling`.
   motionScale={0.72}
   physics={{ maximumSpeed: 900, stiffness: 30, damping: 10.8 }}
   tailMotion={{ minimumRate: 3.2, maximumRate: 11.5, response: 6.5 }}
-  timing={{ morphIn: 250, morphOut: 150, turn: 280 }}
+  timing={{ morphIn: 250, morphOut: 150, turn: 280, reaction: 400 }}
   idleMotion={{ breathAmplitude: 0.055, tipAmplitude: 0.105, tipSpeed: 1.45 }}
 />
 ```

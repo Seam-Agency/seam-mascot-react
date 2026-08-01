@@ -16,6 +16,7 @@ export type MascotEvent =
   | "MOVE_RIGHT"
   | "STOP"
   | "IDLE"
+  | "REACT"
   | "PAUSE"
   | "RESUME"
   | "TOGGLE_PAUSE";
@@ -55,6 +56,8 @@ export interface MascotTimingOptions {
   turn?: number;
   idleCycle?: number;
   breathCycle?: number;
+  /** Click reaction duration in milliseconds. */
+  reaction?: number;
   idleReveal?: number;
 }
 
@@ -83,6 +86,10 @@ export interface MascotSnapshot {
   readonly tailRate: number;
   readonly morph: number;
   readonly hasTarget: boolean;
+  readonly reacting: boolean;
+  readonly reactionProgress: number;
+  readonly reactionAmount: number;
+  readonly blinkAmount: number;
   readonly debugState: Exclude<MascotDebugState, "auto"> | null;
 }
 
@@ -116,6 +123,7 @@ export interface MascotMachine {
     options?: MascotMoveOptions
   ): MascotMachine;
   settle(): MascotMachine;
+  playReaction(): MascotMachine;
   pause(): MascotMachine;
   resume(): MascotMachine;
 }
@@ -125,6 +133,7 @@ export interface SeamMascotHandle {
   pause(): void;
   resume(): void;
   stop(): void;
+  playReaction(): void;
   follow(x: number, y: number): void;
   moveTo(target: number | MascotMoveTarget, options?: MascotMoveOptions): void;
   setState(state: MascotState, options?: MascotMoveOptions): void;
@@ -143,6 +152,8 @@ export interface SeamMascotProps
   autoStart?: boolean;
   /** Controlled pause state. */
   paused?: boolean;
+  /** Play the spike-and-blink reaction when the mascot is clicked. */
+  reactionOnClick?: boolean;
   /** Lock the morph for visual debugging, or use `auto` for normal behavior. */
   debugState?: MascotDebugState;
   bodyColor?: string;

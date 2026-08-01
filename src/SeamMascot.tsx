@@ -36,6 +36,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
       interactive = true,
       autoStart = true,
       paused = false,
+      reactionOnClick = true,
       debugState = "auto",
       bodyColor = "#ffffff",
       eyeColor = "#050505",
@@ -174,6 +175,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
         pause: () => machineRef.current?.pause(),
         resume: () => machineRef.current?.resume(),
         stop: () => machineRef.current?.settle(),
+        playReaction: () => machineRef.current?.playReaction(),
         follow: (x, y) => machineRef.current?.follow(x, y),
         moveTo: (target, options) => machineRef.current?.moveTo(target, options),
         setState: (state, options) => machineRef.current?.setState(state, options),
@@ -186,8 +188,26 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
       []
     );
 
-    const followPointer = (event: ReactPointerEvent<SVGSVGElement>) => {
-      if (!interactive || !svgRef.current || !machineRef.current) return;
+    const handleMascotPointer = (
+      event: ReactPointerEvent<SVGSVGElement>,
+      activatesReaction: boolean
+    ) => {
+      if (!svgRef.current || !machineRef.current) return;
+      const target = event.target;
+      const hitMascot =
+        target instanceof Node && rootRef.current?.contains(target);
+      const snapshot = machineRef.current.getSnapshot();
+
+      if (
+        reactionOnClick &&
+        hitMascot &&
+        (snapshot.state === "idle" || snapshot.state === "settling")
+      ) {
+        if (activatesReaction) machineRef.current.playReaction();
+        return;
+      }
+
+      if (!interactive) return;
       const svg = svgRef.current;
       const matrix = svg.getScreenCTM();
       if (!matrix) return;
@@ -200,12 +220,12 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
 
     const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
       onPointerMove?.(event);
-      if (!event.defaultPrevented) followPointer(event);
+      if (!event.defaultPrevented) handleMascotPointer(event, false);
     };
 
     const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
       onPointerDown?.(event);
-      if (!event.defaultPrevented) followPointer(event);
+      if (!event.defaultPrevented) handleMascotPointer(event, true);
     };
 
     return (
@@ -233,10 +253,10 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
           <path ref={motionLeftEyeRef} d={SOURCE_PATHS.motion.eyes[0]} />
           <path ref={motionRightEyeRef} d={SOURCE_PATHS.motion.eyes[1]} />
         </defs>
-        <g ref={rootRef} data-state="idle">
-          <path ref={bodyRef} fill={bodyColor} />
-          <path ref={leftEyeRef} fill={eyeColor} />
-          <path ref={rightEyeRef} fill={eyeColor} />
+        <g ref={rootRef} data-state="idle" data-reacting="false">
+          <path ref={bodyRef} fill={bodyColor} data-seam-mascot-hit="" />
+          <path ref={leftEyeRef} fill={eyeColor} data-seam-mascot-hit="" />
+          <path ref={rightEyeRef} fill={eyeColor} data-seam-mascot-hit="" />
         </g>
       </svg>
     );

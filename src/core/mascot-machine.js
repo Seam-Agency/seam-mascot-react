@@ -23,6 +23,7 @@ const EVENTS = Object.freeze({
   MOVE_RIGHT: "MOVE_RIGHT",
   STOP: "STOP",
   IDLE: "IDLE",
+  REACT: "REACT",
   PAUSE: "PAUSE",
   RESUME: "RESUME",
   TOGGLE_PAUSE: "TOGGLE_PAUSE"
@@ -389,6 +390,8 @@ class MascotStateMachine {
         readDuration("--mascot-idle-cycle", 2200),
       breathCycle: options.timing?.breathCycle ??
         readDuration("--mascot-breath-cycle", 3000),
+      reaction: options.timing?.reaction ??
+        readDuration("--mascot-reaction-duration", 400),
       idleReveal: options.timing?.idleReveal ??
         readDuration("--duration-medium", 350)
     };
@@ -540,6 +543,11 @@ class MascotStateMachine {
     this.hasTarget = false;
     this.debugState = null;
     this.idleElapsed = 0;
+    this.reactionElapsed = 0;
+    this.reactionProgress = 0;
+    this.reactionAmount = 0;
+    this.blinkAmount = 0;
+    this.reacting = false;
     this.tailPhase = 0;
     this.tailRate = this.tailMotion.minimumRate;
     this.listeners = new Set();
@@ -554,6 +562,7 @@ class MascotStateMachine {
     this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.root.dataset.state = STATES.IDLE;
+    this.root.dataset.reacting = "false";
     this.render();
   }
 
@@ -597,6 +606,10 @@ class MascotStateMachine {
       tailRate: this.tailRate,
       morph: this.morph,
       hasTarget: this.hasTarget,
+      reacting: this.reacting,
+      reactionProgress: this.reactionProgress,
+      reactionAmount: this.reactionAmount,
+      blinkAmount: this.blinkAmount,
       debugState: this.debugState
     });
   }
@@ -617,6 +630,8 @@ class MascotStateMachine {
       case EVENTS.STOP:
       case EVENTS.IDLE:
         return this.settle();
+      case EVENTS.REACT:
+        return this.playReaction();
       case EVENTS.PAUSE:
         return this.pause();
       case EVENTS.RESUME:
@@ -694,6 +709,7 @@ class MascotStateMachine {
 
   follow(x, y) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return this;
+    if (this.reacting) return this;
     if (this.debugState !== null) return this;
     this.target.x = clamp(x, this.bounds.minimumX, this.bounds.maximumX);
     this.target.y = clamp(y, this.bounds.minimumY, this.bounds.maximumY);
@@ -761,6 +777,89 @@ class MascotStateMachine {
     }
     this.queueFrame();
     return this;
+  }
+
+  playReaction() {
+    const canReact =
+      this.debugState === STATES.IDLE ||
+      (
+        this.debugState === null &&
+        (this.state === STATES.IDLE || this.state === STATES.SETTLING)
+      );
+    if (
+      this.destroyed ||
+      this.reacting ||
+      !canReact ||
+      this.reducedMotion.matches
+    ) {
+      return this;
+    }
+
+    this.reacting = true;
+    this.reactionElapsed = 0;
+    this.reactionProgress = 0;
+    this.reactionAmount = 0;
+    this.blinkAmount = 0;
+    this.root.dataset.reacting = "true";
+    for (const state of this.idleTipStates) {
+      state.active = false;
+      state.pulse = 0;
+    }
+    this.emit();
+    this.lastFrameTime = performance.now();
+    this.queueFrame();
+    return this;
+  }
+
+  resetReaction() {
+    this.reacting = false;
+    this.reactionElapsed = 0;
+    this.reactionProgress = 0;
+    this.reactionAmount = 0;
+    this.blinkAmount = 0;
+    this.root.dataset.reacting = "false";
+  }
+
+  updateReaction(deltaTime) {
+    if (!this.reacting) return;
+    this.reactionElapsed += deltaTime;
+    const progress = clamp01(
+      this.reactionElapsed / Math.max(1, this.timing.reaction)
+    );
+    this.reactionProgress = progress;
+
+    if (progress < 0.28) {
+      this.reactionAmount = lerp(
+        0,
+        0.12,
+        smoothOut(progress / 0.28)
+      );
+    } else if (progress < 0.68) {
+      this.reactionAmount = lerp(
+        0.12,
+        -0.06,
+        smootherstep((progress - 0.28) / 0.4)
+      );
+    } else {
+      this.reactionAmount = lerp(
+        -0.06,
+        0,
+        smoothOut((progress - 0.68) / 0.32)
+      );
+    }
+
+    if (progress < 0.08 || progress >= 0.4) {
+      this.blinkAmount = 0;
+    } else if (progress < 0.23) {
+      this.blinkAmount = smoothOut((progress - 0.08) / 0.15);
+    } else {
+      this.blinkAmount = 1 - smoothOut((progress - 0.23) / 0.17);
+    }
+
+    if (progress < 1) return;
+    this.resetReaction();
+    this.resetIdleTips();
+    this.emit();
   }
 
   pause() {
@@ -951,6 +1050,7 @@ class MascotStateMachine {
 
   update(deltaTime) {
     const deltaSeconds = deltaTime / 1000;
+    this.updateReaction(deltaTime);
 
     if (this.debugState !== null) {
       this.updateTailMotion(deltaTime);
@@ -966,7 +1066,7 @@ class MascotStateMachine {
       if (this.morph > 0.9995) this.morph = 1;
       if (this.debugState === STATES.IDLE) {
         this.idleElapsed += deltaTime;
-        this.updateIdleTips(deltaTime);
+        if (!this.reacting) this.updateIdleTips(deltaTime);
       } else {
         this.idleElapsed = 0;
       }
@@ -1110,7 +1210,7 @@ class MascotStateMachine {
 
     if (nextState === STATES.IDLE) {
       this.idleElapsed += deltaTime;
-      this.updateIdleTips(deltaTime);
+      if (!this.reacting) this.updateIdleTips(deltaTime);
     }
   }
 
@@ -1243,6 +1343,20 @@ class MascotStateMachine {
         y *= 1 + radialOffset;
       }
 
+      if (this.reactionAmount !== 0) {
+        let reactionInfluence = 0;
+        for (const tip of this.idleTipModel.tips) {
+          reactionInfluence = Math.max(
+            reactionInfluence,
+            tip.influence[index]
+          );
+        }
+        const reactionScale =
+          1 + this.reactionAmount * reactionInfluence;
+        x *= reactionScale;
+        y *= reactionScale;
+      }
+
       bodyBuffer[index].x = x;
       bodyBuffer[index].y = y;
     }
@@ -1276,6 +1390,15 @@ class MascotStateMachine {
           eyeMorph
         );
       }
+
+      if (this.blinkAmount > 0) {
+        const eyeBounds = getPointBounds(buffer);
+        const blinkScaleY = lerp(1, 0.06, this.blinkAmount);
+        for (const point of buffer) {
+          point.y = eyeBounds.centerY +
+            (point.y - eyeBounds.centerY) * blinkScaleY;
+        }
+      }
       this.eyes[eyeIndex].setAttribute("d", smoothClosedPath(buffer));
     }
 
@@ -1301,6 +1424,13 @@ class MascotStateMachine {
 
   changeState(nextState) {
     if (this.state === nextState) return;
+    if (
+      nextState !== STATES.IDLE &&
+      nextState !== STATES.SETTLING &&
+      this.reacting
+    ) {
+      this.resetReaction();
+    }
     this.previousState = this.state;
     this.state = nextState;
     this.root.dataset.state = nextState;

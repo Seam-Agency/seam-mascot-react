@@ -63,6 +63,63 @@ buildSync({
     assert.ok(idleTipTiming.attacks.every((duration) => duration <= 942));
     assert.ok(idleTipTiming.releases.every((duration) => duration <= 1291));
 
+    const initialEyeHeights = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-seam-mascot] > g > path'))
+        .slice(1)
+        .map((eye) => eye.getBBox().height)
+    );
+    await page.mouse.click(600, 300);
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.reactionAmount > 0.08
+    );
+    const outwardReaction = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      return {
+        snapshot: machine.getSnapshot(),
+        tipRatios: machine.idleTipModel.tips.map(({ tipIndex }) => {
+          const source = machine.geometry.star.body[tipIndex];
+          const current = machine.geometry.bodyBuffer[tipIndex];
+          return Math.hypot(current.x, current.y) / Math.hypot(source.x, source.y);
+        }),
+        bodyTransform: document
+          .querySelector('[data-seam-mascot] > g > path')
+          .getAttribute("transform")
+      };
+    });
+    assert.equal(outwardReaction.snapshot.state, "idle");
+    assert.equal(outwardReaction.snapshot.hasTarget, false);
+    assert.ok(outwardReaction.tipRatios.every((ratio) => ratio > 1.06));
+    assert.equal(outwardReaction.bodyTransform, null, "Reaction must not rotate");
+
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.blinkAmount > 0.82
+    );
+    const blinkEyeHeights = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-seam-mascot] > g > path'))
+        .slice(1)
+        .map((eye) => eye.getBBox().height)
+    );
+    assert.ok(
+      blinkEyeHeights.every((height, index) => height < initialEyeHeights[index] * 0.3),
+      "Both eyes should blink in place"
+    );
+
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.reactionAmount < -0.03
+    );
+    const inwardTipRatios = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      return machine.idleTipModel.tips.map(({ tipIndex }) => {
+        const source = machine.geometry.star.body[tipIndex];
+        const current = machine.geometry.bodyBuffer[tipIndex];
+        return Math.hypot(current.x, current.y) / Math.hypot(source.x, source.y);
+      });
+    });
+    assert.ok(inwardTipRatios.every((ratio) => ratio < 0.985));
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
+    );
+
     await page.mouse.move(1020, 190);
     await page.waitForFunction(() => {
       const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
@@ -89,9 +146,37 @@ buildSync({
       "Direction reversal should not pass through idle"
     );
 
+    const settlingReaction = await page.evaluate(() => {
+      const api = window.mascotSmoke.ref.current;
+      api.stop();
+      const before = api.getSnapshot();
+      document.querySelector('[data-seam-mascot-hit]').dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 })
+      );
+      return { before, after: api.getSnapshot() };
+    });
+    assert.equal(settlingReaction.before.state, "settling");
+    assert.equal(settlingReaction.after.reacting, true);
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
+    );
+
     await page.evaluate(() => window.mascotSmoke.ref.current.setDebugState("idle"));
     await page.waitForFunction(() =>
-      window.mascotSmoke.ref.current?.getSnapshot()?.debugState === "idle"
+      window.mascotSmoke.ref.current?.getSnapshot()?.debugState === "idle" &&
+        window.mascotSmoke.ref.current?.getSnapshot()?.morph === 0
+    );
+    const fixedIdleReaction = await page.evaluate(() => {
+      document.querySelector('[data-seam-mascot-hit]').dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 })
+      );
+      return window.mascotSmoke.ref.current.getSnapshot();
+    });
+    assert.equal(fixedIdleReaction.state, "idle");
+    assert.equal(fixedIdleReaction.debugState, "idle");
+    assert.equal(fixedIdleReaction.reacting, true);
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
     );
     const transformBefore = await page.locator('[data-seam-mascot] > g').getAttribute("transform");
     await page.waitForTimeout(500);
