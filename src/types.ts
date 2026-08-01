@@ -96,6 +96,7 @@ export interface MascotSnapshot {
   readonly tailRate: number;
   readonly morph: number;
   readonly hasTarget: boolean;
+  readonly canReact: boolean;
   readonly reacting: boolean;
   readonly reactionProgress: number;
   readonly reactionAmount: number;

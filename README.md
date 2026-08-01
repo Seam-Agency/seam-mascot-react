@@ -5,7 +5,7 @@ A lightweight React component for Seam's procedural SVG mascot. It morphs from a
 - Runs animation through a single `requestAnimationFrame` state machine without re-rendering React on every frame.
 - Follows the pointer across both axes using velocity, acceleration, and spring physics.
 - Includes velocity-reactive tail motion, a neutral direction-change bridge, and procedural idle breathing.
-- Plays a coordinated spike pop and blink when clicked while idle or settling.
+- Plays a coordinated spike pop and blink whenever its visible form is idle-ready.
 - Blinks procedurally during idle with randomized timing and occasional double blinks.
 - Supports server-side rendering and respects `prefers-reduced-motion`.
 - Ships with TypeScript declarations and no runtime dependencies beyond React.
@@ -74,7 +74,7 @@ The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setS
 
 ## Click reaction
 
-Clicking the mascot while it is idle or settling pushes every spike slightly beyond its resting shape, pulls them inward, and releases them while the eyes blink once. It also works with `debugState="idle"`, so the interaction responds before the full idle transition has completed. The 400ms reaction uses the transitions.dev smooth-out curve between phases.
+Clicking the mascot while its visible morph is close to the idle star pushes every spike slightly beyond its resting shape, pulls them inward, and releases them while the eyes blink once. Eligibility follows the visible morph rather than the nominal state, so a nearby pointer target cannot leave an idle-looking mascot unresponsive in `moving`. Starting the reaction cancels that residual target and velocity. It also works with `debugState="idle"`. The 400ms reaction uses the transitions.dev smooth-out curve between phases.
 
 Disable the interaction or trigger it manually with the ref API:
 

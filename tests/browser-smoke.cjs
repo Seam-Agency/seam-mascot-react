@@ -50,6 +50,7 @@ buildSync({
 
     const initial = await page.evaluate(() => window.mascotSmoke.ref.current.getSnapshot());
     assert.equal(initial.state, "idle");
+    assert.equal(initial.canReact, true);
     assert.deepEqual(initial.position, { x: 600, y: 300 });
     const idleTipTiming = await page.evaluate(() => {
       const machine = window.mascotSmoke.ref.current.getMachine();
@@ -144,6 +145,36 @@ buildSync({
       window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
     );
 
+    const visuallyIdleMovingReaction = await page.evaluate(() => {
+      const api = window.mascotSmoke.ref.current;
+      const machine = api.getMachine();
+      machine.state = "moving";
+      machine.root.dataset.state = "moving";
+      machine.debugState = null;
+      machine.hasTarget = true;
+      machine.target.x = machine.position.x + 8;
+      machine.target.y = machine.position.y;
+      machine.velocity.x = 2;
+      machine.velocity.y = 0;
+      machine.speed = 2;
+      machine.morph = 0.08;
+      const before = api.getSnapshot();
+      document.querySelector('[data-seam-mascot-hit]').dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 })
+      );
+      return { before, after: api.getSnapshot() };
+    });
+    assert.equal(visuallyIdleMovingReaction.before.state, "moving");
+    assert.equal(visuallyIdleMovingReaction.before.canReact, true);
+    assert.equal(visuallyIdleMovingReaction.after.reacting, true);
+    assert.equal(visuallyIdleMovingReaction.after.hasTarget, false);
+    assert.equal(visuallyIdleMovingReaction.after.speed, 0);
+    assert.deepEqual(visuallyIdleMovingReaction.after.velocity, { x: 0, y: 0 });
+    assert.equal(visuallyIdleMovingReaction.after.state, "settling");
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
+    );
+
     await page.mouse.move(1020, 190);
     await page.waitForFunction(() => {
       const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
@@ -170,9 +201,13 @@ buildSync({
       "Direction reversal should not pass through idle"
     );
 
+    await page.evaluate(() => window.mascotSmoke.ref.current.stop());
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.state === "settling" && snapshot.canReact;
+    });
     const settlingReaction = await page.evaluate(() => {
       const api = window.mascotSmoke.ref.current;
-      api.stop();
       const before = api.getSnapshot();
       document.querySelector('[data-seam-mascot-hit]').dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 })
@@ -180,6 +215,7 @@ buildSync({
       return { before, after: api.getSnapshot() };
     });
     assert.equal(settlingReaction.before.state, "settling");
+    assert.equal(settlingReaction.before.canReact, true);
     assert.equal(settlingReaction.after.reacting, true);
     await page.waitForFunction(() =>
       window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false

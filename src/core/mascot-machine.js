@@ -16,6 +16,11 @@ const DEBUG_MORPH_TARGETS = Object.freeze({
   [STATES.SETTLING]: 0.28
 });
 
+// Keep click eligibility aligned with the shape the user can actually see.
+// Below this amount the mascot still reads as its idle star form, even when
+// a nearby pointer target keeps the runtime state labelled as moving.
+const REACTION_MORPH_THRESHOLD = 0.18;
+
 const EVENTS = Object.freeze({
   FOLLOW: "FOLLOW",
   MOVE_TO: "MOVE_TO",
@@ -646,6 +651,7 @@ class MascotStateMachine {
       tailRate: this.tailRate,
       morph: this.morph,
       hasTarget: this.hasTarget,
+      canReact: this.canPlayReaction(),
       reacting: this.reacting,
       reactionProgress: this.reactionProgress,
       reactionAmount: this.reactionAmount,
@@ -820,21 +826,25 @@ class MascotStateMachine {
     return this;
   }
 
-  playReaction() {
-    const canReact =
-      this.debugState === STATES.IDLE ||
-      (
-        this.debugState === null &&
-        (this.state === STATES.IDLE || this.state === STATES.SETTLING)
-      );
+  canPlayReaction() {
     if (
       this.destroyed ||
       this.reacting ||
-      !canReact ||
+      this.state === STATES.PAUSED ||
       this.reducedMotion.matches
     ) {
-      return this;
+      return false;
     }
+
+    if (this.debugState !== null) {
+      return this.debugState === STATES.IDLE;
+    }
+
+    return !this.turning && this.morph <= REACTION_MORPH_THRESHOLD;
+  }
+
+  playReaction() {
+    if (!this.canPlayReaction()) return this;
 
     this.reacting = true;
     this.reactionElapsed = 0;
@@ -842,6 +852,21 @@ class MascotStateMachine {
     this.reactionAmount = 0;
     this.blinkAmount = 0;
     this.root.dataset.reacting = "true";
+
+    if (this.debugState === null) {
+      this.hasTarget = false;
+      this.target.x = this.position.x;
+      this.target.y = this.position.y;
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+      this.speed = 0;
+      this.visualTilt = 0;
+      this.pendingFacing = 0;
+      this.changeState(
+        this.morph > 0.001 ? STATES.SETTLING : STATES.IDLE
+      );
+    }
+
     this.scheduleRandomBlink();
     for (const state of this.idleTipStates) {
       state.active = false;

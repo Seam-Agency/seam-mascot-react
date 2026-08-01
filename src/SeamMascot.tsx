@@ -201,7 +201,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
       if (
         reactionOnClick &&
         hitMascot &&
-        (snapshot.state === "idle" || snapshot.state === "settling")
+        snapshot.canReact
       ) {
         if (activatesReaction) machineRef.current.playReaction();
         return;
