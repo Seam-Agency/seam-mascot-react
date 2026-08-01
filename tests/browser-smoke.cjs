@@ -127,10 +127,17 @@ buildSync({
         .slice(1)
         .map((eye) => eye.getBBox().height)
     );
-    await page.waitForFunction(() => {
+    await page.waitForFunction((openEyeHeights) => {
       const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
-      return snapshot?.randomBlinking && snapshot.blinkAmount > 0.75;
-    });
+      const currentEyeHeights = Array.from(
+        document.querySelectorAll('[data-seam-mascot] > g > path')
+      ).slice(1).map((eye) => eye.getBBox().height);
+      return snapshot?.randomBlinking &&
+        snapshot.blinkAmount > 0.75 &&
+        currentEyeHeights.every(
+          (height, index) => height < openEyeHeights[index] * 0.4
+        );
+    }, initialEyeHeights);
     const proceduralBlink = await page.evaluate(() => ({
       snapshot: window.mascotSmoke.ref.current.getSnapshot(),
       duration: window.mascotSmoke.ref.current.getMachine().randomBlinkDuration,
