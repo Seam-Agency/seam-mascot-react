@@ -1,4 +1,11 @@
-import type { CSSProperties, PointerEventHandler, SVGProps } from "react";
+import type {
+  CSSProperties,
+  HTMLAttributes,
+  PointerEventHandler,
+  ReactNode,
+  RefObject,
+  SVGProps
+} from "react";
 
 export type MascotState =
   | "idle"
@@ -150,6 +157,38 @@ export interface MascotMoveOptions {
   static?: boolean;
 }
 
+export type MascotSpeechBubblePlacement =
+  | "auto"
+  | "top"
+  | "right"
+  | "bottom"
+  | "left";
+
+export type MascotSpeechBubbleTheme = "auto" | "light" | "dark";
+
+export interface MascotSpeechBubbleOptions {
+  /** Keep the content mounted while opening and closing the bubble. */
+  visible?: boolean;
+  /** Preferred side of the mascot. Auto chooses the side with enough room. */
+  placement?: MascotSpeechBubblePlacement;
+  /** Bubble width in SVG viewBox units. */
+  width?: number;
+  /** Bubble height in SVG viewBox units. */
+  height?: number;
+  /** Gap between the mascot and the bubble. */
+  offset?: number;
+  /** Host theme. The bubble automatically uses the contrasting surface. */
+  theme?: MascotSpeechBubbleTheme;
+  /** Size of the speech-tail diamond in SVG viewBox units. */
+  tailSize?: number;
+  backgroundColor?: string;
+  color?: string;
+  borderColor?: string;
+  borderRadius?: number;
+  className?: string;
+  style?: CSSProperties;
+}
+
 export interface MascotMachine {
   start(): MascotMachine;
   destroy(): void;
@@ -187,6 +226,33 @@ export interface SeamMascotHandle {
   getElement(): SVGSVGElement | null;
 }
 
+export interface SeamMascotBubbleProps
+  extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
+  /** Ref of the mascot this HTML bubble should follow. */
+  mascotRef: RefObject<SeamMascotHandle | null>;
+  /** Keep the bubble mounted while controlling its open/close transition. */
+  visible?: boolean;
+  /** Preferred side. Auto favors the clearest horizontal side. */
+  placement?: MascotSpeechBubblePlacement;
+  /** Host theme. The bubble uses a contrasting surface. */
+  theme?: MascotSpeechBubbleTheme;
+  /** Gap after the mascot clearance, in CSS pixels. */
+  offset?: number;
+  /** Radius reserved around the mascot, in CSS pixels. */
+  mascotClearance?: number;
+  /** Minimum distance from the viewport edge, in CSS pixels. */
+  edgePadding?: number;
+  /** Fine horizontal adjustment in CSS pixels. */
+  nudgeX?: number;
+  /** Fine vertical adjustment in CSS pixels. */
+  nudgeY?: number;
+  /** Optional class for the crisp inner HTML surface. */
+  surfaceClassName?: string;
+  /** Optional style overrides for the crisp inner HTML surface. */
+  surfaceStyle?: CSSProperties;
+  children?: ReactNode;
+}
+
 export interface SeamMascotProps
   extends Omit<SVGProps<SVGSVGElement>, "onStateChange" | "ref"> {
   /** Follow pointer movement inside the SVG. */
@@ -205,9 +271,19 @@ export interface SeamMascotProps
   ditherTrail?: boolean;
   /** Normalized dither density from 0 (subtle) to 1 (dense). */
   ditherTrailIntensity?: number;
+  /** Trail footprint multiplier. Values below 1 make it shorter and thinner. */
+  ditherTrailScale?: number;
   /** Dither pixel color. Defaults to the current bodyColor. */
   ditherTrailColor?: string;
+  /** Optional speech content that follows the mascot. */
+  speechBubble?: ReactNode;
+  /** Layout and visual options for the speech bubble. */
+  speechBubbleOptions?: MascotSpeechBubbleOptions;
   bodyColor?: string;
+  /** Optional outline color for the morphing body path. */
+  bodyStrokeColor?: string;
+  /** Body outline width in SVG viewBox units. */
+  bodyStrokeWidth?: number;
   eyeColor?: string;
   bounds?: Partial<MascotBounds>;
   initialPosition?: Point;

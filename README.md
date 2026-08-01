@@ -79,9 +79,15 @@ Use `ditherTrailIntensity` to tune the normalized density from `0` to `1`. The d
 <SeamMascot ditherTrail ditherTrailIntensity={0} />
 ```
 
+`ditherTrailScale` controls the visible footprint independently. Values below `1` shorten and narrow the trail without changing its color:
+
+```tsx
+<SeamMascot ditherTrail ditherTrailScale={0.72} />
+```
+
 The implementation uses the browser's WebGL API directly, adds no runtime dependency, respects `prefers-reduced-motion`, and falls back to the regular mascot when WebGL is unavailable.
 
-`bodyColor` and `eyeColor` control the SVG mascot. `ditherTrailColor` controls the trail independently and falls back to `bodyColor` when omitted, so theme palettes stay concise:
+`bodyColor` and `eyeColor` control the SVG mascot. Use `bodyStrokeColor` and `bodyStrokeWidth` when the mascot needs a crisp outline across contrasting themes. `ditherTrailColor` controls the trail independently and falls back to `bodyColor` when omitted:
 
 ```tsx
 const mascotTheme = colorScheme === "dark"
@@ -91,8 +97,10 @@ const mascotTheme = colorScheme === "dark"
       ditherTrailColor: "#ffffff"
     }
   : {
-      bodyColor: "#050505",
-      eyeColor: "#ffffff",
+      bodyColor: "#ffffff",
+      bodyStrokeColor: "#050505",
+      bodyStrokeWidth: 1.5,
+      eyeColor: "#050505",
       ditherTrailColor: "#050505"
     };
 
@@ -123,6 +131,38 @@ export function ControlledMascot() {
 `moveTo` uses normalized `0..1` coordinates by default. To use SVG coordinates, pass `{ x: 800, y: 240, unit: "svg" }`.
 
 The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setState`, `setDebugState`, `setIdleVariant`, `send`, `getSnapshot`, and `getMachine`.
+
+## Speech bubble
+
+For crisp interface text, render `SeamMascotBubble` beside the mascot. It is a regular HTML layer, anchors to the mascot's stable position instead of its breathing transform, rounds coordinates to device pixels, and automatically chooses a side with enough room. It intentionally has no speech-tail arrow:
+
+```tsx
+import { useRef } from "react";
+import {
+  SeamMascot,
+  SeamMascotBubble,
+  type SeamMascotHandle
+} from "@seam-agency/mascot-react";
+
+const mascotRef = useRef<SeamMascotHandle>(null);
+
+<>
+  <SeamMascot ref={mascotRef} />
+  <SeamMascotBubble
+    mascotRef={mascotRef}
+    visible
+    placement="auto"
+    theme="dark"
+    nudgeY={-36}
+  >
+    Create from one clear idea.
+  </SeamMascotBubble>
+</>
+```
+
+Keep it mounted and toggle `visible` for the built-in origin-aware popover transition. The surface opens from the corner nearest the mascot in 250ms and retracts in 150ms without blurring the text. `placement`, `offset`, `mascotClearance`, `edgePadding`, `nudgeX`, and `nudgeY` control its layout; a negative `nudgeY` creates a compact upper-diagonal composition. Use `surfaceClassName` or `surfaceStyle` to customize the surface; interactive content is supported.
+
+The original SVG-contained `speechBubble` and `speechBubbleOptions` props remain available for self-contained SVG exports. Use `SeamMascotBubble` for product UI where native-resolution text matters.
 
 ## Click reaction
 

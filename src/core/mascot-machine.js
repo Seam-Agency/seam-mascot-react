@@ -414,6 +414,19 @@ class MascotStateMachine {
     this.root = options.root;
     this.body = options.body;
     this.eyes = options.eyes;
+    this.speechBubble = options.speechBubble?.element
+      ? {
+          element: options.speechBubble.element,
+          placement: ["auto", "top", "right", "bottom", "left"].includes(
+            options.speechBubble.placement
+          )
+            ? options.speechBubble.placement
+            : "auto",
+          width: Math.max(112, options.speechBubble.width ?? 220),
+          height: Math.max(58, options.speechBubble.height ?? 104),
+          offset: Math.max(6, options.speechBubble.offset ?? 18)
+        }
+      : null;
     this.bounds = {
       minimumX: options.bounds?.minimumX ?? 70,
       maximumX: options.bounds?.maximumX ?? 1130,
@@ -553,6 +566,7 @@ class MascotStateMachine {
       eyeSamples: options.eyeSamples ?? 24,
       targetHeight: options.targetHeight ?? 92
     };
+    this.targetHeight = geometryOptions.targetHeight;
     const star = normalizeShape(
       options.sources.star.body,
       options.sources.star.eyes,
@@ -2053,6 +2067,8 @@ class MascotStateMachine {
         ")"
     );
 
+    this.updateSpeechBubble(renderPositionX, renderPositionY);
+
     if (this.trailSource) {
       const firstTail = tailModel.tails[0];
       const secondTail = tailModel.tails[1];
@@ -2080,6 +2096,72 @@ class MascotStateMachine {
         this.speed > 2 &&
         this.state !== STATES.PAUSED;
     }
+  }
+
+  updateSpeechBubble(renderPositionX, renderPositionY) {
+    if (!this.speechBubble) return;
+
+    const bubble = this.speechBubble;
+    const safePadding = 14;
+    const verticalRadius = this.targetHeight * 0.58;
+    const horizontalRadius = this.targetHeight * 0.72;
+    const available = {
+      top: renderPositionY - verticalRadius - bubble.offset - safePadding,
+      right:
+        1200 - renderPositionX - horizontalRadius - bubble.offset - safePadding,
+      bottom:
+        600 - renderPositionY - verticalRadius - bubble.offset - safePadding,
+      left: renderPositionX - horizontalRadius - bubble.offset - safePadding
+    };
+    const required = {
+      top: bubble.height,
+      right: bubble.width,
+      bottom: bubble.height,
+      left: bubble.width
+    };
+
+    let placement = bubble.placement;
+    if (placement === "auto") {
+      const preferred = ["top", "right", "left", "bottom"];
+      placement = preferred.find(
+        (candidate) => available[candidate] >= required[candidate]
+      ) ?? preferred.reduce((best, candidate) =>
+        available[candidate] - required[candidate] >
+        available[best] - required[best]
+          ? candidate
+          : best
+      );
+    }
+
+    let x = renderPositionX - bubble.width / 2;
+    let y = renderPositionY - verticalRadius - bubble.offset - bubble.height;
+
+    if (placement === "bottom") {
+      y = renderPositionY + verticalRadius + bubble.offset;
+    } else if (placement === "left") {
+      x = renderPositionX - horizontalRadius - bubble.offset - bubble.width;
+      y = renderPositionY - bubble.height / 2;
+    } else if (placement === "right") {
+      x = renderPositionX + horizontalRadius + bubble.offset;
+      y = renderPositionY - bubble.height / 2;
+    }
+
+    x = clamp(x, safePadding, 1200 - bubble.width - safePadding);
+    y = clamp(y, safePadding, 600 - bubble.height - safePadding);
+
+    const tipX = clamp(renderPositionX - x, 22, bubble.width - 22);
+    const tipY = clamp(renderPositionY - y, 22, bubble.height - 22);
+    bubble.element.setAttribute("x", formatNumber(x));
+    bubble.element.setAttribute("y", formatNumber(y));
+    bubble.element.dataset.placement = placement;
+    bubble.element.style.setProperty(
+      "--seam-speech-tip-x",
+      formatNumber(tipX) + "px"
+    );
+    bubble.element.style.setProperty(
+      "--seam-speech-tip-y",
+      formatNumber(tipY) + "px"
+    );
   }
 
   changeState(nextState) {

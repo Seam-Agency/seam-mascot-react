@@ -49,12 +49,18 @@ buildSync({
       const api = window.mascotSmoke?.ref.current;
       return api?.getSnapshot()?.state === "idle" &&
         document.querySelector('[data-seam-mascot] g > path')?.getAttribute("d") &&
-        document.querySelector('[data-seam-dither-canvas]');
+        document.querySelector('[data-seam-dither-canvas]') &&
+        document.querySelector('[data-seam-mascot-bubble][data-ready="true"]');
     });
     assert.equal(
       await page.locator('[data-seam-dither-canvas]').getAttribute("data-dither-status"),
       "ready",
       "Dither WebGL shader should initialize"
+    );
+    assert.equal(
+      await page.locator('[data-seam-dither-canvas]').getAttribute("data-dither-scale"),
+      "0.72",
+      "Dither footprint scale should reach the shader canvas"
     );
 
     await page.evaluate(() =>
@@ -67,6 +73,43 @@ buildSync({
     assert.equal(initial.idleVariantAmount, 0);
     assert.equal(initial.canReact, true);
     assert.deepEqual(initial.position, { x: 600, y: 300 });
+    const initialBubble = await page.evaluate(() => {
+      const bubble = document.querySelector('[data-seam-speech-bubble]');
+      return {
+        x: Number(bubble?.getAttribute("x")),
+        y: Number(bubble?.getAttribute("y")),
+        visible: bubble?.getAttribute("data-visible"),
+        placement: bubble?.getAttribute("data-placement"),
+        text: bubble?.textContent
+      };
+    });
+    assert.equal(initialBubble.visible, "true");
+    assert.equal(initialBubble.placement, "top");
+    assert.match(initialBubble.text, /Hello from Seam/);
+    assert.ok(Number.isFinite(initialBubble.x));
+    assert.ok(Number.isFinite(initialBubble.y));
+    const initialHtmlBubble = await page.evaluate(() => {
+      const bubble = document.querySelector('[data-seam-mascot-bubble]');
+      const surface = bubble?.querySelector('[data-seam-mascot-bubble-surface]');
+      const rect = bubble?.getBoundingClientRect();
+      return {
+        visible: bubble?.getAttribute("data-visible"),
+        motionState: bubble?.getAttribute("data-motion-state"),
+        ready: bubble?.getAttribute("data-ready"),
+        placement: bubble?.getAttribute("data-placement"),
+        text: surface?.textContent,
+        insideSvg: Boolean(bubble?.closest("svg")),
+        left: rect?.left,
+        top: rect?.top
+      };
+    });
+    assert.equal(initialHtmlBubble.visible, "true");
+    assert.equal(initialHtmlBubble.motionState, "open");
+    assert.equal(initialHtmlBubble.ready, "true");
+    assert.match(initialHtmlBubble.text, /Crisp HTML guide/);
+    assert.equal(initialHtmlBubble.insideSvg, false);
+    assert.ok(Number.isFinite(initialHtmlBubble.left));
+    assert.ok(Number.isFinite(initialHtmlBubble.top));
     const idleTipTiming = await page.evaluate(() => {
       const machine = window.mascotSmoke.ref.current.getMachine();
       return {
@@ -357,6 +400,37 @@ buildSync({
     const moving = await page.evaluate(() => window.mascotSmoke.ref.current.getSnapshot());
     assert.ok(moving.speed > 0, "Pointer follow should produce velocity");
     assert.ok(moving.tailRate > 3.2, "Tail rate should respond to velocity");
+    const movingBubble = await page.evaluate(() => {
+      const bubble = document.querySelector('[data-seam-speech-bubble]');
+      return {
+        x: Number(bubble?.getAttribute("x")),
+        y: Number(bubble?.getAttribute("y")),
+        placement: bubble?.getAttribute("data-placement")
+      };
+    });
+    assert.ok(
+      Math.hypot(
+        movingBubble.x - initialBubble.x,
+        movingBubble.y - initialBubble.y
+      ) > 40,
+      "Speech bubble should follow the mascot position"
+    );
+    assert.ok(
+      ["top", "right", "bottom", "left"].includes(movingBubble.placement)
+    );
+    const movingHtmlBubble = await page.evaluate(() => {
+      const rect = document
+        .querySelector('[data-seam-mascot-bubble]')
+        ?.getBoundingClientRect();
+      return { left: rect?.left, top: rect?.top };
+    });
+    assert.ok(
+      Math.hypot(
+        movingHtmlBubble.left - initialHtmlBubble.left,
+        movingHtmlBubble.top - initialHtmlBubble.top
+      ) > 40,
+      "HTML bubble should follow the mascot's stable position"
+    );
     const trailSource = await page.evaluate(() => {
       const machine = window.mascotSmoke.ref.current.getMachine();
       const tailModel = machine.facing === 1
@@ -440,9 +514,20 @@ buildSync({
       window.mascotSmoke.ref.current?.getSnapshot()?.reacting === false
     );
     const transformBefore = await page.locator('[data-seam-mascot] > g').getAttribute("transform");
+    const htmlBubbleBefore = await page.locator('[data-seam-mascot-bubble]').evaluate(
+      (element) => ({ left: element.style.left, top: element.style.top })
+    );
     await page.waitForTimeout(500);
     const transformAfter = await page.locator('[data-seam-mascot] > g').getAttribute("transform");
+    const htmlBubbleAfter = await page.locator('[data-seam-mascot-bubble]').evaluate(
+      (element) => ({ left: element.style.left, top: element.style.top })
+    );
     assert.notEqual(transformAfter, transformBefore, "Idle should breathe as a whole");
+    assert.deepEqual(
+      htmlBubbleAfter,
+      htmlBubbleBefore,
+      "HTML bubble must not inherit idle breathing motion"
+    );
 
     await page.evaluate(() => window.mascotSmoke.ref.current.pause());
     assert.equal(

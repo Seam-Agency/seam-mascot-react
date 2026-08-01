@@ -9,6 +9,7 @@ export interface DitherTrailSource {
 interface DitherTrailProps {
   sourceRef: RefObject<DitherTrailSource>;
   intensity: number;
+  scale: number;
   color: string;
 }
 
@@ -283,12 +284,15 @@ function parseColor(color: string) {
 export function DitherTrail({
   sourceRef,
   intensity,
+  scale,
   color
 }: DitherTrailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intensityRef = useRef(intensity);
+  const scaleRef = useRef(scale);
   const colorRef = useRef(color);
   intensityRef.current = intensity;
+  scaleRef.current = scale;
   colorRef.current = color;
 
   useEffect(() => {
@@ -394,10 +398,12 @@ export function DitherTrail({
 
       const source = sourceRef.current;
       const normalizedIntensity = clamp01(intensityRef.current);
+      const footprintScale = Math.max(0.35, Math.min(1.5, scaleRef.current));
       const ditherSize = 5.5 - normalizedIntensity * 3.3;
-      const radius = 0.045 + normalizedIntensity * 0.1;
+      const radius = (0.045 + normalizedIntensity * 0.1) * footprintScale;
       const exponent = 1.7 + normalizedIntensity * 1.4;
-      const decay = 0.018 - normalizedIntensity * 0.01;
+      const decay = (0.018 - normalizedIntensity * 0.01) /
+        Math.max(0.55, footprintScale);
       const brushIntensity = 0.2 + normalizedIntensity * 0.68;
       const rgb = parseColor(colorRef.current);
       const sourceX = clamp01(source.x);
@@ -510,6 +516,7 @@ export function DitherTrail({
     <canvas
       ref={canvasRef}
       data-seam-dither-canvas=""
+      data-dither-scale={scale}
       aria-hidden="true"
       style={{
         display: "block",
