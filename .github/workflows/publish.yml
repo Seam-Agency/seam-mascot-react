@@ -37,3 +37,23 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" release-artifacts/seam-mascot-react.tgz --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Add token-free install instructions
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --json body --jq .body | grep -Eq '^## Token-free install\r?$'; then
+            exit 0
+          fi
+
+          gh release view "$GITHUB_REF_NAME" --json body --jq .body > release-notes.md
+          cat >> release-notes.md <<'EOF'
+
+          ## Token-free install
+
+          ```bash
+          npm install https://github.com/Seam-Agency/seam-mascot-react/releases/latest/download/seam-mascot-react.tgz
+          ```
+          EOF
+          gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md
