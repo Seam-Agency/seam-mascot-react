@@ -110,6 +110,57 @@ buildSync({
     assert.equal(initialHtmlBubble.insideSvg, false);
     assert.ok(Number.isFinite(initialHtmlBubble.left));
     assert.ok(Number.isFinite(initialHtmlBubble.top));
+    const initialHtmlBubbleAction = await page.evaluate(() => {
+      const action = document.querySelector(
+        '[data-seam-mascot-bubble-action]'
+      );
+      return {
+        text: action?.textContent,
+        customIcon: Boolean(action?.querySelector('[data-custom-icon]'))
+      };
+    });
+    assert.match(initialHtmlBubbleAction.text, /Continue/);
+    assert.equal(initialHtmlBubbleAction.customIcon, true);
+    const initialTypewriter = await page.evaluate(() => {
+      const typewriter = document.querySelector(
+        '[data-seam-mascot-typewriter]'
+      );
+      return {
+        state: typewriter?.getAttribute("data-typing-state"),
+        height: typewriter?.getBoundingClientRect().height,
+        visibleText: typewriter?.querySelector(
+          '[data-seam-mascot-typewriter-output]'
+        )?.textContent,
+        fullText: typewriter?.getAttribute("aria-label")
+      };
+    });
+    assert.notEqual(initialTypewriter.state, "complete");
+    assert.ok(
+      initialTypewriter.visibleText.length < initialTypewriter.fullText.length
+    );
+    await page.waitForFunction(() =>
+      document.querySelector('[data-seam-mascot-typewriter]')
+        ?.getAttribute("data-typing-state") === "complete"
+    );
+    const completedTypewriter = await page.evaluate(() => {
+      const typewriter = document.querySelector(
+        '[data-seam-mascot-typewriter]'
+      );
+      return {
+        height: typewriter?.getBoundingClientRect().height,
+        visibleText: typewriter?.querySelector(
+          '[data-seam-mascot-typewriter-output]'
+        )?.textContent,
+        fullText: typewriter?.getAttribute("aria-label"),
+        completions: window.mascotSmoke.typingCompletions
+      };
+    });
+    assert.equal(completedTypewriter.visibleText, completedTypewriter.fullText);
+    assert.equal(completedTypewriter.completions, 1);
+    assert.ok(
+      Math.abs(completedTypewriter.height - initialTypewriter.height) < 0.5,
+      "Typewriter should reserve its final height before typing starts"
+    );
     const idleTipTiming = await page.evaluate(() => {
       const machine = window.mascotSmoke.ref.current.getMachine();
       return {
@@ -161,6 +212,85 @@ buildSync({
     );
     await page.waitForFunction(() =>
       window.mascotSmoke.ref.current?.getSnapshot()?.randomBlinking === false
+    );
+
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("typing")
+    );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "typing" &&
+        snapshot.idleVariantAmount > 0.98 &&
+        Math.abs(snapshot.curiousGaze) > 0.8 &&
+        snapshot.randomBlinking === false;
+    });
+    const typingIdle = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const centers = (eyes) => eyes.map((eye) => {
+        const x = eye.map((point) => point.x);
+        const y = eye.map((point) => point.y);
+        return {
+          centerX: (Math.max(...x) + Math.min(...x)) / 2,
+          height: Math.max(...y) - Math.min(...y)
+        };
+      });
+      const eyes = centers(machine.geometry.eyeBuffers);
+      const starEyes = centers(machine.geometry.star.eyes);
+      return {
+        snapshot: machine.getSnapshot(),
+        dataVariant: machine.root.dataset.idleVariant,
+        eyes,
+        starEyes
+      };
+    });
+    assert.equal(typingIdle.snapshot.state, "idle");
+    assert.equal(typingIdle.dataVariant, "typing");
+    assert.ok(
+      typingIdle.eyes.every(
+        (eye, index) =>
+          Math.abs(eye.centerX - typingIdle.starEyes[index].centerX) > 1.5 &&
+          eye.height < initialEyeHeights[index] * 0.94 &&
+          eye.height > initialEyeHeights[index] * 0.72
+      ),
+      "Typing eyes should scan together with a focused, alternating squash"
+    );
+    const initialTypingGazeSign = Math.sign(
+      typingIdle.snapshot.curiousGaze
+    );
+    await page.waitForFunction((gazeSign) => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "typing" &&
+        snapshot.curiousGaze * gazeSign < -0.8;
+    }, initialTypingGazeSign);
+    const typingReleaseSamples = await page.evaluate(() => new Promise(
+      (resolve) => {
+        window.mascotSmoke.ref.current.setIdleVariant("auto");
+        const samples = [];
+        const sample = () => {
+          const snapshot = window.mascotSmoke.ref.current.getSnapshot();
+          samples.push({
+            variant: snapshot.idleVariant,
+            amount: snapshot.idleVariantAmount
+          });
+          if (snapshot.idleVariant === "rest" || samples.length >= 30) {
+            resolve(samples);
+            return;
+          }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }
+    ));
+    assert.equal(typingReleaseSamples[0].variant, "typing");
+    assert.ok(
+      typingReleaseSamples.some(
+        (sample) => sample.amount > 0.05 && sample.amount < 0.95
+      ),
+      "Typing expression should ease out before returning to procedural idle"
+    );
+    assert.equal(
+      typingReleaseSamples[typingReleaseSamples.length - 1].variant,
+      "rest"
     );
 
     await page.evaluate(() =>
@@ -221,6 +351,151 @@ buildSync({
     assert.notEqual(oppositeCuriousGaze.dataGaze, curiousIdle.dataGaze);
 
     await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("bored")
+    );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "bored" &&
+        snapshot.idleVariantAmount > 0.98 &&
+        Math.abs(snapshot.curiousGaze) > 0.8 &&
+        snapshot.randomBlinking === false;
+    });
+    const boredIdle = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const transform = machine.root.getAttribute("transform");
+      const rotation = Number.parseFloat(
+        transform.match(/rotate\(([-\d.]+)/)?.[1] ?? "0"
+      );
+      const eyes = machine.geometry.eyeBuffers.map((buffer, eyeIndex) => {
+        const starEye = machine.geometry.star.eyes[eyeIndex];
+        const starCenterY = (
+          Math.min(...starEye.map((point) => point.y)) +
+          Math.max(...starEye.map((point) => point.y))
+        ) / 2;
+        const upperEdge = buffer
+          .filter((_, pointIndex) => starEye[pointIndex].y < starCenterY)
+          .map((point) => point.y);
+        const allY = buffer.map((point) => point.y);
+        const allX = buffer.map((point) => point.x);
+        const starX = starEye.map((point) => point.x);
+        return {
+          height: Math.max(...allY) - Math.min(...allY),
+          upperEdgeRange: Math.max(...upperEdge) - Math.min(...upperEdge),
+          centerOffsetX:
+            (Math.max(...allX) + Math.min(...allX)) / 2 -
+            (Math.max(...starX) + Math.min(...starX)) / 2
+        };
+      });
+      return {
+        snapshot: machine.getSnapshot(),
+        dataVariant: machine.root.dataset.idleVariant,
+        dataGaze: machine.root.dataset.curiousGaze,
+        rotation,
+        eyes
+      };
+    });
+    assert.equal(boredIdle.snapshot.state, "idle");
+    assert.equal(boredIdle.dataVariant, "bored");
+    assert.ok(Math.abs(boredIdle.rotation) > 0.65);
+    assert.ok(
+      boredIdle.eyes.every(
+        (eye, index) =>
+          eye.height < initialEyeHeights[index] * 0.58 &&
+          eye.height > initialEyeHeights[index] * 0.25 &&
+          eye.upperEdgeRange < eye.height * 0.18 &&
+          Math.abs(eye.centerOffsetX) > 1.2
+      ),
+      "Bored eyes should be half-lidded, flat on top, and looking aside"
+    );
+    const initialBoredGazeSign = Math.sign(boredIdle.snapshot.curiousGaze);
+    await page.waitForFunction((gazeSign) => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "bored" &&
+        snapshot.curiousGaze * gazeSign < -0.8;
+    }, initialBoredGazeSign);
+
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("shy")
+    );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "shy" &&
+        snapshot.idleVariantAmount > 0.98 &&
+        Math.abs(snapshot.curiousGaze) > 0.8 &&
+        snapshot.randomBlinking === false;
+    });
+    const shyIdle = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const centers = (eyes) => eyes.map((eye) => {
+        const x = eye.map((point) => point.x);
+        const y = eye.map((point) => point.y);
+        return {
+          x: (Math.max(...x) + Math.min(...x)) / 2,
+          y: (Math.max(...y) + Math.min(...y)) / 2,
+          height: Math.max(...y) - Math.min(...y)
+        };
+      });
+      return {
+        eyes: centers(machine.geometry.eyeBuffers),
+        starEyes: centers(machine.geometry.star.eyes)
+      };
+    });
+    const shyEyeDistance = Math.abs(shyIdle.eyes[1].x - shyIdle.eyes[0].x);
+    const starEyeDistance = Math.abs(
+      shyIdle.starEyes[1].x - shyIdle.starEyes[0].x
+    );
+    assert.ok(shyEyeDistance < starEyeDistance - 0.5);
+    assert.ok(
+      shyIdle.eyes.every(
+        (eye, index) =>
+          eye.y > shyIdle.starEyes[index].y + 0.75 &&
+          eye.height < initialEyeHeights[index] * 0.9 &&
+          eye.height > initialEyeHeights[index] * 0.65
+      )
+    );
+
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("surprised")
+    );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "surprised" &&
+        snapshot.idleVariantAmount > 0.98 &&
+        snapshot.randomBlinking === false;
+    });
+    const surprisedIdle = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const bounds = (eyes) => eyes.map((eye) => {
+        const x = eye.map((point) => point.x);
+        const y = eye.map((point) => point.y);
+        return {
+          centerX: (Math.max(...x) + Math.min(...x)) / 2,
+          width: Math.max(...x) - Math.min(...x),
+          height: Math.max(...y) - Math.min(...y)
+        };
+      });
+      return {
+        eyes: bounds(machine.geometry.eyeBuffers),
+        starEyes: bounds(machine.geometry.star.eyes)
+      };
+    });
+    const surprisedEyeDistance = Math.abs(
+      surprisedIdle.eyes[1].centerX - surprisedIdle.eyes[0].centerX
+    );
+    const surprisedStarDistance = Math.abs(
+      surprisedIdle.starEyes[1].centerX -
+      surprisedIdle.starEyes[0].centerX
+    );
+    assert.ok(surprisedEyeDistance > surprisedStarDistance + 0.7);
+    assert.ok(
+      surprisedIdle.eyes.every(
+        (eye, index) =>
+          eye.height > surprisedIdle.starEyes[index].height * 1.2 &&
+          eye.width > surprisedIdle.starEyes[index].width * 1.08
+      )
+    );
+
+    await page.evaluate(() =>
       window.mascotSmoke.ref.current.setIdleVariant("auto")
     );
     await page.waitForFunction(() => {
@@ -232,7 +507,15 @@ buildSync({
       window.mascotSmoke.ref.current.getSnapshot()
     );
     assert.ok(
-      ["curious", "squish", "float", "deep-breath"].includes(
+      [
+        "curious",
+        "bored",
+        "shy",
+        "surprised",
+        "squish",
+        "float",
+        "deep-breath"
+      ].includes(
         automaticIdle.idleVariant
       )
     );

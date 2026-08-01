@@ -26,17 +26,78 @@ const DITHER_TRAIL_TIP_INSET = 0.24;
 
 const IDLE_VARIANTS = Object.freeze([
   "curious",
+  "bored",
+  "shy",
+  "surprised",
   "squish",
   "float",
   "deep-breath"
 ]);
-const IDLE_VARIANT_VALUES = Object.freeze(["rest", ...IDLE_VARIANTS]);
+const IDLE_VARIANT_VALUES = Object.freeze([
+  "rest",
+  "typing",
+  ...IDLE_VARIANTS
+]);
+const IDLE_GAZE_PROFILES = Object.freeze({
+  typing: Object.freeze({
+    durationMinimum: 120,
+    durationMaximum: 210,
+    delayMinimum: 110,
+    delayMaximum: 280,
+    centerChance: 0.22
+  }),
+  curious: Object.freeze({
+    durationMinimum: 420,
+    durationMaximum: 580,
+    delayMinimum: 380,
+    delayMaximum: 760,
+    centerChance: 0
+  }),
+  bored: Object.freeze({
+    durationMinimum: 620,
+    durationMaximum: 920,
+    delayMinimum: 620,
+    delayMaximum: 1250,
+    centerChance: 0.2
+  }),
+  shy: Object.freeze({
+    durationMinimum: 560,
+    durationMaximum: 820,
+    delayMinimum: 720,
+    delayMaximum: 1250,
+    centerChance: 0.3
+  })
+});
 const IDLE_VARIANT_PROFILES = Object.freeze({
+  typing: Object.freeze({
+    attack: 250,
+    holdMinimum: 900,
+    holdMaximum: 1200,
+    release: 150
+  }),
   curious: Object.freeze({
     attack: 500,
     holdMinimum: 1600,
     holdMaximum: 2600,
     release: 500
+  }),
+  bored: Object.freeze({
+    attack: 500,
+    holdMinimum: 1400,
+    holdMaximum: 2200,
+    release: 500
+  }),
+  shy: Object.freeze({
+    attack: 500,
+    holdMinimum: 1400,
+    holdMaximum: 2200,
+    release: 500
+  }),
+  surprised: Object.freeze({
+    attack: 250,
+    holdMinimum: 450,
+    holdMaximum: 750,
+    release: 350
   }),
   squish: Object.freeze({
     attack: 350,
@@ -690,6 +751,7 @@ class MascotStateMachine {
     this.idleVariantAttackDuration = 500;
     this.idleVariantHoldDuration = 1000;
     this.idleVariantReleaseDuration = 500;
+    this.idleVariantReleaseFrom = 0;
     this.curiousGaze = 0;
     this.curiousGazeFrom = 0;
     this.curiousGazeTarget = 0;
@@ -904,7 +966,20 @@ class MascotStateMachine {
       !this.reacting &&
       !this.reducedMotion.matches
     ) {
-      this.resetIdleVariant();
+      if (
+        normalized === "auto" &&
+        this.idleVariant !== "rest" &&
+        this.idleVariantAmount > 0
+      ) {
+        this.idleVariantPhase = "release";
+        this.idleVariantElapsed = 0;
+        this.idleVariantReleaseFrom = this.idleVariantAmount;
+        const profile = IDLE_VARIANT_PROFILES[this.idleVariant];
+        this.idleVariantReleaseDuration =
+          (profile?.release ?? 150) * randomBetween(0.92, 1.08);
+      } else {
+        this.resetIdleVariant();
+      }
     } else {
       this.cancelIdleVariant();
     }
@@ -1311,6 +1386,7 @@ class MascotStateMachine {
     this.idleVariantElapsed = 0;
     this.idleVariantMotionElapsed = 0;
     this.idleVariantAmount = 0;
+    this.idleVariantReleaseFrom = 0;
     this.idleVariantDelay = 0;
     this.resetCuriousGaze();
     this.root.dataset.idleVariant = "rest";
@@ -1328,18 +1404,26 @@ class MascotStateMachine {
   }
 
   startCuriousGaze(nextDirection) {
+    const profile = IDLE_GAZE_PROFILES[this.idleVariant] ??
+      IDLE_GAZE_PROFILES.curious;
     const currentDirection = Math.abs(this.curiousGaze) > 0.2
       ? Math.sign(this.curiousGaze)
       : this.idleVariantDirection;
     this.curiousGazeFrom = this.curiousGaze;
-    this.curiousGazeTarget = nextDirection ?? -currentDirection;
+    this.curiousGazeTarget = nextDirection ?? (
+      Math.random() < profile.centerChance ? 0 : -currentDirection
+    );
     this.curiousGazeElapsed = 0;
-    this.curiousGazeDuration = randomBetween(420, 580);
+    this.curiousGazeDuration = randomBetween(
+      profile.durationMinimum,
+      profile.durationMaximum
+    );
     this.curiousGazeMoving = true;
   }
 
   updateCuriousGaze(deltaTime) {
-    if (this.idleVariant !== "curious") return;
+    const profile = IDLE_GAZE_PROFILES[this.idleVariant];
+    if (!profile) return;
 
     if (!this.curiousGazeMoving) {
       this.curiousGazeDelay -= deltaTime;
@@ -1365,7 +1449,10 @@ class MascotStateMachine {
     if (progress < 1) return;
     this.curiousGaze = this.curiousGazeTarget;
     this.curiousGazeMoving = false;
-    this.curiousGazeDelay = randomBetween(380, 760);
+    this.curiousGazeDelay = randomBetween(
+      profile.delayMinimum,
+      profile.delayMaximum
+    );
   }
 
   configureIdleVariant(variant) {
@@ -1402,7 +1489,7 @@ class MascotStateMachine {
     this.idleVariant = this.idleVariantMode;
     this.idleVariantPhase = "attack";
     this.configureIdleVariant(this.idleVariant);
-    if (this.idleVariant === "curious") {
+    if (IDLE_GAZE_PROFILES[this.idleVariant]) {
       this.startCuriousGaze(this.idleVariantDirection);
     }
     this.root.dataset.idleVariant = this.idleVariant;
@@ -1423,7 +1510,7 @@ class MascotStateMachine {
     this.idleVariantMotionElapsed = 0;
     this.idleVariantAmount = 0;
     this.configureIdleVariant(nextVariant);
-    if (nextVariant === "curious") {
+    if (IDLE_GAZE_PROFILES[nextVariant]) {
       this.startCuriousGaze(this.idleVariantDirection);
     }
     this.root.dataset.idleVariant = nextVariant;
@@ -1478,6 +1565,7 @@ class MascotStateMachine {
       this.idleVariantAmount = 1;
       if (this.idleVariantElapsed < this.idleVariantHoldDuration) return;
       this.idleVariantElapsed = 0;
+      this.idleVariantReleaseFrom = this.idleVariantAmount;
       this.idleVariantPhase = "release";
       return;
     }
@@ -1486,7 +1574,8 @@ class MascotStateMachine {
       this.idleVariantElapsed /
         Math.max(1, this.idleVariantReleaseDuration)
     );
-    this.idleVariantAmount = 1 - smoothOut(progress);
+    this.idleVariantAmount =
+      this.idleVariantReleaseFrom * (1 - smoothOut(progress));
     if (progress < 1) return;
 
     this.cancelIdleVariant();
@@ -1860,9 +1949,32 @@ class MascotStateMachine {
     let variantScaleY = 1;
     let variantEyeOffsetX = 0;
     let variantEyeOffsetY = 0;
+    const variantEyeScaleX = [1, 1];
+    const variantEyeScaleY = [1, 1];
+    const variantEyeLocalOffsetX = [0, 0];
+    const variantEyeLocalOffsetY = [0, 0];
+    const variantEyeLidAmount = [0, 0];
     let breathDepth = 1;
 
-    if (this.idleVariant === "curious") {
+    if (this.idleVariant === "typing") {
+      const typingAmount = idleVariantAmount;
+      const typingBeat = (Math.sin(idleVariantTime * 15.5) + 1) / 2;
+      const readingDrift = Math.sin(idleVariantTime * 7.4);
+      variantOffsetY = typingAmount * (0.16 + typingBeat * 0.12);
+      variantRotation = this.curiousGaze * typingAmount * 0.72;
+      variantScaleX = 1 + typingAmount * (0.004 + typingBeat * 0.005);
+      variantScaleY = 1 - typingAmount * (0.003 + typingBeat * 0.004);
+      variantEyeOffsetX = this.curiousGaze * typingAmount * 2.65;
+      variantEyeOffsetY = typingAmount * (0.08 + readingDrift * 0.12);
+      variantEyeScaleX[0] = 1 - typingAmount * (0.04 + typingBeat * 0.025);
+      variantEyeScaleX[1] =
+        1 - typingAmount * (0.04 + (1 - typingBeat) * 0.025);
+      variantEyeScaleY[0] = 1 - typingAmount * (0.08 + typingBeat * 0.09);
+      variantEyeScaleY[1] =
+        1 - typingAmount * (0.08 + (1 - typingBeat) * 0.09);
+      variantEyeLocalOffsetY[0] = readingDrift * typingAmount * 0.22;
+      variantEyeLocalOffsetY[1] = -readingDrift * typingAmount * 0.18;
+    } else if (this.idleVariant === "curious") {
       const curiousDrift = 0.88 + Math.sin(idleVariantTime * 2.1) * 0.12;
       const curiousAmount = idleVariantAmount * curiousDrift;
       variantOffsetX = this.idleVariantDirection * curiousAmount * 1.8;
@@ -1873,6 +1985,50 @@ class MascotStateMachine {
       variantEyeOffsetX =
         this.curiousGaze * idleVariantAmount * 2.9;
       variantEyeOffsetY = -curiousAmount * 0.45;
+    } else if (this.idleVariant === "bored") {
+      const boredAmount = idleVariantAmount;
+      const boredDrift = Math.sin(idleVariantTime * 1.25) * 0.18;
+      variantOffsetX = this.idleVariantDirection * boredAmount * 0.35;
+      variantOffsetY = boredAmount * (0.55 + boredDrift);
+      variantRotation = -this.curiousGaze * boredAmount * 1.15;
+      variantScaleX = 1 + boredAmount * 0.004;
+      variantScaleY = 1 - boredAmount * 0.008;
+      variantEyeOffsetX = this.curiousGaze * boredAmount * 2.4;
+      variantEyeOffsetY = boredAmount * 0.75;
+      variantEyeLidAmount[0] = boredAmount;
+      variantEyeLidAmount[1] = boredAmount;
+    } else if (this.idleVariant === "shy") {
+      const shyAmount = idleVariantAmount;
+      const gazeDirection = Math.abs(this.curiousGaze) > 0.2
+        ? Math.sign(this.curiousGaze)
+        : this.idleVariantDirection;
+      variantOffsetX = -gazeDirection * shyAmount * 0.25;
+      variantOffsetY = shyAmount * 0.85;
+      variantRotation = -gazeDirection * shyAmount * 1.8;
+      variantScaleX = 1 - shyAmount * 0.004;
+      variantScaleY = 1 + shyAmount * 0.006;
+      variantEyeOffsetX = this.curiousGaze * shyAmount * 1.75;
+      variantEyeOffsetY = shyAmount * 1.15;
+      variantEyeScaleX[0] = 1 - shyAmount * 0.08;
+      variantEyeScaleX[1] = 1 - shyAmount * 0.08;
+      variantEyeScaleY[0] = 1 - shyAmount * 0.12;
+      variantEyeScaleY[1] = 1 - shyAmount * 0.12;
+      variantEyeLocalOffsetX[0] = shyAmount * 0.35;
+      variantEyeLocalOffsetX[1] = -shyAmount * 0.35;
+      variantEyeLidAmount[0] = shyAmount * 0.14;
+      variantEyeLidAmount[1] = shyAmount * 0.14;
+    } else if (this.idleVariant === "surprised") {
+      const surpriseWave = 0.94 + Math.sin(idleVariantTime * 7.5) * 0.06;
+      const surprisedAmount = idleVariantAmount * surpriseWave;
+      variantOffsetY = -surprisedAmount * 0.75;
+      variantScaleX = 1 + surprisedAmount * 0.016;
+      variantScaleY = 1 + surprisedAmount * 0.022;
+      variantEyeScaleX[0] = 1 + surprisedAmount * 0.12;
+      variantEyeScaleX[1] = 1 + surprisedAmount * 0.12;
+      variantEyeScaleY[0] = 1 + surprisedAmount * 0.3;
+      variantEyeScaleY[1] = 1 + surprisedAmount * 0.3;
+      variantEyeLocalOffsetX[0] = -surprisedAmount * 0.55;
+      variantEyeLocalOffsetX[1] = surprisedAmount * 0.55;
     } else if (this.idleVariant === "squish") {
       const squishPulse = 0.82 + Math.sin(idleVariantTime * 4.6) * 0.18;
       const squishAmount = idleVariantAmount * squishPulse;
@@ -2030,6 +2186,40 @@ class MascotStateMachine {
           eyeMorph
         ) + variantEyeOffsetY;
         buffer[pointIndex].x += variantEyeOffsetX;
+      }
+
+      if (
+        variantEyeScaleX[eyeIndex] !== 1 ||
+        variantEyeScaleY[eyeIndex] !== 1 ||
+        variantEyeLocalOffsetX[eyeIndex] !== 0 ||
+        variantEyeLocalOffsetY[eyeIndex] !== 0
+      ) {
+        const eyeBounds = getPointBounds(buffer);
+        for (const point of buffer) {
+          point.x = eyeBounds.centerX +
+            (point.x - eyeBounds.centerX) * variantEyeScaleX[eyeIndex] +
+            variantEyeLocalOffsetX[eyeIndex];
+          point.y = eyeBounds.centerY +
+            (point.y - eyeBounds.centerY) * variantEyeScaleY[eyeIndex] +
+            variantEyeLocalOffsetY[eyeIndex];
+        }
+      }
+
+      if (variantEyeLidAmount[eyeIndex] > 0) {
+        const eyeBounds = getPointBounds(buffer);
+        const halfHeight = Math.max(0.001, eyeBounds.height / 2);
+        const lidAmount = clamp01(variantEyeLidAmount[eyeIndex]);
+        for (const point of buffer) {
+          const normalizedY = (point.y - eyeBounds.centerY) / halfHeight;
+          const liddedY = normalizedY < 0
+            ? -0.24
+            : normalizedY * 0.62;
+          point.y = lerp(
+            point.y,
+            eyeBounds.centerY + liddedY * halfHeight,
+            lidAmount
+          );
+        }
       }
 
       if (combinedBlinkAmount > 0) {

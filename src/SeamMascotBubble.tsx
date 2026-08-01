@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { SmoothCorners } from "@lisse/react";
 import type { SeamMascotBubbleProps } from "./types.js";
 
 const BUBBLE_STYLES = `
@@ -98,8 +99,128 @@ const BUBBLE_STYLES = `
     pointer-events: none;
   }
 
+  [data-seam-mascot-bubble-action-anchor] {
+    position: absolute;
+    top: calc(100% + 7px);
+    right: 0;
+    z-index: 2;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    transition: none;
+    pointer-events: none;
+  }
+
+  [data-seam-mascot-bubble][data-placement="right"]
+    [data-seam-mascot-bubble-action-anchor] {
+    right: auto;
+    left: 0;
+  }
+
+  [data-seam-mascot-bubble][data-placement="top"]
+    [data-seam-mascot-bubble-action-anchor],
+  [data-seam-mascot-bubble][data-placement="bottom"]
+    [data-seam-mascot-bubble-action-anchor] {
+    right: auto;
+    left: 50%;
+    transform: translate(-50%, -4px);
+  }
+
+  [data-seam-mascot-bubble][data-ready="true"][data-motion-state="open"]
+    [data-seam-mascot-bubble-action-anchor] {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition:
+      opacity 180ms var(--seam-bubble-ease) 70ms,
+      transform 220ms var(--seam-bubble-ease) 70ms,
+      visibility 0s linear 0s;
+    pointer-events: auto;
+  }
+
+  [data-seam-mascot-bubble][data-ready="true"][data-motion-state="open"][data-placement="top"]
+    [data-seam-mascot-bubble-action-anchor],
+  [data-seam-mascot-bubble][data-ready="true"][data-motion-state="open"][data-placement="bottom"]
+    [data-seam-mascot-bubble-action-anchor] {
+    transform: translate(-50%, 0);
+  }
+
+  [data-seam-mascot-bubble][data-motion-state="closing"]
+    [data-seam-mascot-bubble-action-anchor] {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-2px);
+    transition:
+      opacity 110ms var(--seam-bubble-ease),
+      transform 110ms var(--seam-bubble-ease),
+      visibility 0s linear 110ms;
+  }
+
+  [data-seam-mascot-bubble-action] {
+    display: inline-flex;
+    min-width: 88px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 12px;
+    border: 0;
+    color: var(--seam-bubble-action-color);
+    background: var(--seam-bubble-action-background);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 560;
+    line-height: 1;
+    transition:
+      color 160ms var(--seam-bubble-ease),
+      background 160ms var(--seam-bubble-ease),
+      transform 120ms var(--seam-bubble-ease);
+    pointer-events: auto;
+  }
+
+  [data-seam-mascot-bubble-action]:hover:not(:disabled) {
+    background: var(--seam-bubble-action-hover);
+  }
+
+  [data-seam-mascot-bubble-action]:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  [data-seam-mascot-bubble-action]:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+  }
+
+  [data-seam-mascot-bubble-action]:disabled {
+    cursor: wait;
+    opacity: 0.48;
+  }
+
+  [data-seam-mascot-bubble-action-icon] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    transition: transform 160ms var(--seam-bubble-ease);
+  }
+
+  [data-seam-mascot-bubble-action-icon] > svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  [data-seam-mascot-bubble-action]:hover:not(:disabled)
+    [data-seam-mascot-bubble-action-icon] {
+    transform: translateX(2px);
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    [data-seam-mascot-bubble-surface] {
+    [data-seam-mascot-bubble-surface],
+    [data-seam-mascot-bubble-action-anchor],
+    [data-seam-mascot-bubble-action],
+    [data-seam-mascot-bubble-action-icon] {
       transition: none !important;
     }
   }
@@ -160,6 +281,7 @@ export function SeamMascotBubble({
   nudgeY = 0,
   surfaceClassName,
   surfaceStyle,
+  action,
   children,
   className,
   style,
@@ -341,19 +463,24 @@ export function SeamMascotBubble({
     ? {
         background: "#f1f0ed",
         color: "#0a0a0b",
-        border: "rgba(255, 255, 255, 0.72)"
+        border: "rgba(255, 255, 255, 0.72)",
+        hover: "#ffffff"
       }
     : theme === "light"
       ? {
           background: "#0b0b0c",
           color: "#f4f3ee",
-          border: "rgba(0, 0, 0, 0.72)"
+          border: "rgba(0, 0, 0, 0.72)",
+          hover: "#19191b"
         }
       : {
           background: "light-dark(#0b0b0c, #f1f0ed)",
           color: "light-dark(#f4f3ee, #0a0a0b)",
-          border: "light-dark(rgba(0, 0, 0, 0.72), rgba(255, 255, 255, 0.72))"
+          border: "light-dark(rgba(0, 0, 0, 0.72), rgba(255, 255, 255, 0.72))",
+          hover: "light-dark(#19191b, #ffffff)"
         };
+
+  const actionLabel = action?.label ?? "Continue";
 
   return (
     <>
@@ -384,6 +511,53 @@ export function SeamMascotBubble({
         >
           {children}
         </div>
+        {action ? (
+          <div data-seam-mascot-bubble-action-anchor="">
+            <SmoothCorners
+              as="button"
+              type="button"
+              corners={{ radius: 10, smoothing: 0.35 }}
+              autoEffects={false}
+              innerBorder={{
+                width: 1,
+                color: theme === "dark" ? "#000000" : "#ffffff",
+                opacity: 0.12
+              }}
+              shadow={{
+                offsetX: 0,
+                offsetY: 7,
+                blur: 18,
+                spread: -3,
+                color: "#000000",
+                opacity: theme === "dark" ? 0.18 : 0.12
+              }}
+              shadowStrategy="box-shadow"
+              data-seam-mascot-bubble-action=""
+              aria-label={
+                action.ariaLabel ??
+                (typeof actionLabel === "string" ? actionLabel : undefined)
+              }
+              disabled={action.disabled}
+              onClick={action.onClick}
+              className={action.className}
+              style={{
+                "--seam-bubble-action-background": palette.background,
+                "--seam-bubble-action-color": palette.color,
+                "--seam-bubble-action-hover": palette.hover,
+                ...action.style
+              } as CSSProperties}
+            >
+              <span data-seam-mascot-bubble-action-label="">
+                {actionLabel}
+              </span>
+              {action.icon ? (
+                <span data-seam-mascot-bubble-action-icon="">
+                  {action.icon}
+                </span>
+              ) : null}
+            </SmoothCorners>
+          </div>
+        ) : null}
       </div>
     </>
   );

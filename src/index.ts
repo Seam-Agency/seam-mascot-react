@@ -1,8 +1,10 @@
 export { SeamMascot } from "./SeamMascot.js";
 export { SeamMascot as Mascot } from "./SeamMascot.js";
 export { SeamMascotBubble } from "./SeamMascotBubble.js";
+export { SeamMascotTypewriter } from "./SeamMascotTypewriter.js";
 export type {
   MascotBounds,
+  MascotBubbleAction,
   MascotDebugState,
   MascotEvent,
   MascotIdleMotionOptions,
@@ -22,5 +24,6 @@ export type {
   Point,
   SeamMascotHandle,
   SeamMascotBubbleProps,
+  SeamMascotTypewriterProps,
   SeamMascotProps
 } from "./types.js";

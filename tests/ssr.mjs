@@ -4,7 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   Mascot,
   SeamMascot,
-  SeamMascotBubble
+  SeamMascotBubble,
+  SeamMascotTypewriter
 } from "../dist/index.js";
 
 assert.equal(Mascot, SeamMascot, "Mascot alias should reference SeamMascot");
@@ -61,7 +62,11 @@ const htmlBubbleMarkup = renderToStaticMarkup(
       mascotRef: createRef(),
       visible: true,
       placement: "right",
-      theme: "dark"
+      theme: "dark",
+      action: {
+        label: "Continue",
+        icon: createElement("span", { "data-custom-icon": "" }, "→")
+      }
     },
     "Crisp HTML guide"
   )
@@ -70,6 +75,20 @@ assert.match(htmlBubbleMarkup, /data-seam-mascot-bubble=""/);
 assert.match(htmlBubbleMarkup, /data-seam-mascot-bubble-surface=""/);
 assert.match(htmlBubbleMarkup, /data-visible="true"/);
 assert.match(htmlBubbleMarkup, /data-motion-state="open"/);
+assert.match(htmlBubbleMarkup, /data-seam-mascot-bubble-action=""/);
+assert.match(htmlBubbleMarkup, /data-seam-mascot-bubble-action-icon=""/);
+assert.match(htmlBubbleMarkup, /data-custom-icon=""/);
+assert.match(htmlBubbleMarkup, /Continue/);
 assert.match(htmlBubbleMarkup, /Crisp HTML guide/);
+
+const typewriterMarkup = renderToStaticMarkup(
+  createElement(SeamMascotTypewriter, {
+    text: "Three messages can share one location."
+  })
+);
+assert.match(typewriterMarkup, /data-seam-mascot-typewriter=""/);
+assert.match(typewriterMarkup, /data-typing-state="waiting"/);
+assert.match(typewriterMarkup, /aria-label="Three messages can share one location\."/);
+assert.match(typewriterMarkup, /Three messages can share one location\./);
 
 console.log("SSR smoke test passed");

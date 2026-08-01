@@ -1,7 +1,11 @@
 import { createRoot } from "react-dom/client";
 import { createElement, createRef, Fragment } from "react";
 import type { RefObject } from "react";
-import { SeamMascot, SeamMascotBubble } from "../src/index.js";
+import {
+  SeamMascot,
+  SeamMascotBubble,
+  SeamMascotTypewriter
+} from "../src/index.js";
 import type { MascotSnapshot, SeamMascotHandle } from "../src/index.js";
 
 declare global {
@@ -9,6 +13,7 @@ declare global {
     mascotSmoke: {
       ref: RefObject<SeamMascotHandle | null>;
       snapshots: MascotSnapshot[];
+      typingCompletions: number;
     };
   }
 }
@@ -59,11 +64,23 @@ createRoot(container).render(
         mascotRef: ref,
         visible: true,
         placement: "auto",
-        theme: "dark"
+        theme: "dark",
+        action: {
+          label: "Continue",
+          icon: createElement("span", { "data-custom-icon": "" }, "→")
+        }
       },
-      "Crisp HTML guide"
+      createElement(SeamMascotTypewriter, {
+        text: "Crisp HTML guide messages can type at a calm readable pace.",
+        speed: 26,
+        startDelay: 180,
+        punctuationDelay: 40,
+        onComplete: () => {
+          window.mascotSmoke.typingCompletions += 1;
+        }
+      })
     )
   )
 );
 
-window.mascotSmoke = { ref, snapshots };
+window.mascotSmoke = { ref, snapshots, typingCompletions: 0 };

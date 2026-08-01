@@ -154,6 +154,11 @@ const mascotRef = useRef<SeamMascotHandle>(null);
     placement="auto"
     theme="dark"
     nudgeY={-36}
+    action={{
+      label: "Continue",
+      icon: <ArrowRightIcon aria-hidden />,
+      onClick: goToNextStep
+    }}
   >
     Create from one clear idea.
   </SeamMascotBubble>
@@ -161,6 +166,57 @@ const mascotRef = useRef<SeamMascotHandle>(null);
 ```
 
 Keep it mounted and toggle `visible` for the built-in origin-aware popover transition. The surface opens from the corner nearest the mascot in 250ms and retracts in 150ms without blurring the text. `placement`, `offset`, `mascotClearance`, `edgePadding`, `nudgeX`, and `nudgeY` control its layout; a negative `nudgeY` creates a compact upper-diagonal composition. Use `surfaceClassName` or `surfaceStyle` to customize the surface; interactive content is supported.
+
+The optional `action` stays on the corner nearest the mascot and follows the bubble theme. `action.icon` accepts any React node, so Nucleo and other icon components can be passed directly. The label, accessible label, disabled state, click handler, class, and inline style are also replaceable.
+
+### Typed message sequences
+
+`SeamMascotTypewriter` reveals plain text with punctuation-aware timing while reserving the final text size from the first frame, so the bubble does not resize character by character. Use a regular array for multiple messages at one mascot location, then move the mascot only after the final message:
+
+```tsx
+import { useState } from "react";
+import {
+  SeamMascotBubble,
+  SeamMascotTypewriter
+} from "@seam-agency/mascot-react";
+
+const messages = [
+  "Start with one clear idea.",
+  "Bring your brand references with you.",
+  "Refine the strongest direction."
+];
+const [messageIndex, setMessageIndex] = useState(0);
+const [typingComplete, setTypingComplete] = useState(false);
+const [revealAll, setRevealAll] = useState(false);
+
+function continueDialogue() {
+  if (!typingComplete) {
+    setRevealAll(true);
+    return;
+  }
+  if (messageIndex < messages.length - 1) {
+    setMessageIndex(index => index + 1);
+    setTypingComplete(false);
+    setRevealAll(false);
+    return;
+  }
+  moveToNextLocation();
+}
+
+<SeamMascotBubble
+  mascotRef={mascotRef}
+  action={{ label: "Continue", onClick: continueDialogue }}
+>
+  <SeamMascotTypewriter
+    key={messageIndex}
+    text={messages[messageIndex]}
+    revealAll={revealAll}
+    onComplete={() => setTypingComplete(true)}
+  />
+</SeamMascotBubble>
+```
+
+`speed`, `startDelay`, and `punctuationDelay` tune the cadence. Set `active={false}` while the mascot is travelling to pause without losing progress, pass `cursor={false}` to remove the cursor, or set `revealAll` to finish the current message immediately. Reduced-motion users receive the complete text without the typing animation.
 
 The original SVG-contained `speechBubble` and `speechBubbleOptions` props remain available for self-contained SVG exports. Use `SeamMascotBubble` for product UI where native-resolution text matters.
 
@@ -182,7 +238,7 @@ Independent idle blinks use a randomized `1800–5200ms` delay and `110–180ms`
 
 ## Ambient idle moods
 
-The default `idleVariant="auto"` mode gives the stationary mascot four occasional behaviors: a curious glance and tilt, a soft squish, a gentle float, and a deeper breath. Curious mode now alternates its gaze between left and right at procedural intervals instead of locking the eyes to one side. Each behavior enters and leaves through a short smooth-out transition while the machine remains in `idle`, so application logic listening to the top-level state stays stable.
+The default `idleVariant="auto"` mode gives the stationary mascot seven occasional behaviors: curious, bored, shy, surprised, squish, float, and deep-breath. Curious alternates its gaze, bored scans slowly with half-lidded eyes, shy looks down and aside, and surprised briefly widens both eyes. Each behavior enters and leaves through a short smooth-out transition while the machine remains in `idle`, so application logic listening to the top-level state stays stable. The explicit `typing` variant adds quick reading saccades and a subtle alternating eye rhythm for streamed or typewritten copy; it is intentionally excluded from the random `auto` rotation.
 
 Lock a mood while tuning or presenting it:
 
@@ -190,7 +246,7 @@ Lock a mood while tuning or presenting it:
 <SeamMascot idleVariant="curious" />
 ```
 
-Supported values are `auto`, `rest`, `curious`, `squish`, `float`, and `deep-breath`. The imperative ref exposes the same control through `setIdleVariant`. `snapshot.idleVariant` reports the visible mood and `snapshot.idleVariantAmount` reports its current normalized envelope.
+Supported values are `auto`, `rest`, `typing`, `curious`, `bored`, `shy`, `surprised`, `squish`, `float`, and `deep-breath`. The imperative ref exposes the same control through `setIdleVariant`. `snapshot.idleVariant` reports the visible mood and `snapshot.idleVariantAmount` reports its current normalized envelope. Switching an active explicit mood back to `auto` eases the expression out before the procedural rotation resumes.
 
 The regular idle loop also plays a lighter version of the click reaction at long random intervals: the spikes expand, pull inward, and settle without entering the click-reaction state. `snapshot.ambientPulsing` and `snapshot.ambientPulseAmount` expose that motion, while `snapshot.curiousGaze` reports the live gaze from `-1` (left) to `1` (right).
 

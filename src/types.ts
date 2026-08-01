@@ -1,6 +1,7 @@
 import type {
   CSSProperties,
   HTMLAttributes,
+  MouseEventHandler,
   PointerEventHandler,
   ReactNode,
   RefObject,
@@ -18,7 +19,11 @@ export type MascotDebugState = Exclude<MascotState, "paused"> | "auto";
 
 export type MascotIdleVariant =
   | "rest"
+  | "typing"
   | "curious"
+  | "bored"
+  | "shy"
+  | "surprised"
   | "squish"
   | "float"
   | "deep-breath";
@@ -166,6 +171,39 @@ export type MascotSpeechBubblePlacement =
 
 export type MascotSpeechBubbleTheme = "auto" | "light" | "dark";
 
+export interface MascotBubbleAction {
+  /** Button content. Defaults to `Continue`. */
+  label?: ReactNode;
+  /** Optional icon node, including Nucleo React components. */
+  icon?: ReactNode;
+  /** Accessible label used when the visible label is not plain text. */
+  ariaLabel?: string;
+  disabled?: boolean;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+  className?: string;
+  style?: CSSProperties;
+}
+
+export interface SeamMascotTypewriterProps
+  extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+  /** Plain text revealed by the typewriter. */
+  text: string;
+  /** Pause or resume typing without discarding current progress. */
+  active?: boolean;
+  /** Immediately reveal the complete text. */
+  revealAll?: boolean;
+  /** Base delay between characters, in milliseconds. */
+  speed?: number;
+  /** Delay before the first character, in milliseconds. */
+  startDelay?: number;
+  /** Additional pause after punctuation, in milliseconds. */
+  punctuationDelay?: number;
+  /** Cursor content. Pass `false` to hide it. */
+  cursor?: ReactNode | false;
+  /** Called once when the current text is fully visible. */
+  onComplete?: () => void;
+}
+
 export interface MascotSpeechBubbleOptions {
   /** Keep the content mounted while opening and closing the bubble. */
   visible?: boolean;
@@ -250,6 +288,8 @@ export interface SeamMascotBubbleProps
   surfaceClassName?: string;
   /** Optional style overrides for the crisp inner HTML surface. */
   surfaceStyle?: CSSProperties;
+  /** Optional mascot-facing action. Its icon accepts any React node. */
+  action?: MascotBubbleAction;
   children?: ReactNode;
 }
 
