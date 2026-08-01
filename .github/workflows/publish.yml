@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -22,6 +22,18 @@ jobs:
           scope: "@seam-agency"
       - run: npm ci
       - run: npm run check
-      - run: npm publish
+      - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build token-free release artifact
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          npm pack --pack-destination release-artifacts
+          mv release-artifacts/seam-agency-mascot-react-*.tgz release-artifacts/seam-mascot-react.tgz
+      - name: Upload token-free release artifact
+        if: github.event_name == 'release'
+        run: gh release upload "$GITHUB_REF_NAME" release-artifacts/seam-mascot-react.tgz --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

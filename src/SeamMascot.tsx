@@ -6,6 +6,10 @@ import {
   useRef
 } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import {
+  DitherTrail,
+  type DitherTrailSource
+} from "./DitherTrail.js";
 import { MascotStateMachine as RuntimeMascotStateMachine } from "./core/mascot-machine.js";
 import { SOURCE_PATHS } from "./core/source-paths.js";
 import type {
@@ -38,6 +42,10 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
       paused = false,
       reactionOnClick = true,
       debugState = "auto",
+      idleVariant = "auto",
+      ditherTrail = false,
+      ditherTrailIntensity = 0,
+      ditherTrailColor,
       bodyColor = "#ffffff",
       eyeColor = "#050505",
       bounds,
@@ -72,6 +80,11 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
     const motionLeftEyeRef = useRef<SVGPathElement>(null);
     const motionRightEyeRef = useRef<SVGPathElement>(null);
     const machineRef = useRef<MascotMachine | null>(null);
+    const ditherSourceRef = useRef<DitherTrailSource>({
+      x: 0.5,
+      y: 0.5,
+      active: false
+    });
     const onStateChangeRef = useRef(onStateChange);
 
     onStateChangeRef.current = onStateChange;
@@ -138,7 +151,9 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
         physics,
         tailMotion,
         timing,
-        idleMotion
+        idleMotion,
+        idleVariant,
+        trailSource: ditherSourceRef.current
       });
 
       machineRef.current = machine;
@@ -164,6 +179,10 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
     }, [debugState]);
 
     useEffect(() => {
+      machineRef.current?.setIdleVariant(idleVariant);
+    }, [idleVariant]);
+
+    useEffect(() => {
       if (paused) machineRef.current?.pause();
       else machineRef.current?.resume();
     }, [paused]);
@@ -180,6 +199,7 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
         moveTo: (target, options) => machineRef.current?.moveTo(target, options),
         setState: (state, options) => machineRef.current?.setState(state, options),
         setDebugState: (state) => machineRef.current?.setDebugState(state),
+        setIdleVariant: (variant) => machineRef.current?.setIdleVariant(variant),
         send: (event, payload) => machineRef.current?.send(event, payload),
         getSnapshot: () => machineRef.current?.getSnapshot() ?? null,
         getMachine: () => machineRef.current,
@@ -253,7 +273,31 @@ export const SeamMascot = forwardRef<SeamMascotHandle, SeamMascotProps>(
           <path ref={motionLeftEyeRef} d={SOURCE_PATHS.motion.eyes[0]} />
           <path ref={motionRightEyeRef} d={SOURCE_PATHS.motion.eyes[1]} />
         </defs>
-        <g ref={rootRef} data-state="idle" data-reacting="false">
+        {ditherTrail && (
+          <foreignObject
+            x="0"
+            y="0"
+            width="1200"
+            height="600"
+            data-seam-dither-trail=""
+            aria-hidden="true"
+            style={{ overflow: "hidden", pointerEvents: "none" }}
+          >
+            <DitherTrail
+              sourceRef={ditherSourceRef}
+              intensity={ditherTrailIntensity}
+              color={ditherTrailColor ?? bodyColor}
+            />
+          </foreignObject>
+        )}
+        <g
+          ref={rootRef}
+          data-state="idle"
+          data-reacting="false"
+          data-idle-variant="rest"
+          data-curious-gaze="center"
+          data-ambient-pulsing="false"
+        >
           <path ref={bodyRef} fill={bodyColor} data-seam-mascot-hit="" />
           <path ref={leftEyeRef} fill={eyeColor} data-seam-mascot-hit="" />
           <path ref={rightEyeRef} fill={eyeColor} data-seam-mascot-hit="" />

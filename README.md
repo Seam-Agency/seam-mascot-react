@@ -5,14 +5,30 @@ A lightweight React component for Seam's procedural SVG mascot. It morphs from a
 - Runs animation through a single `requestAnimationFrame` state machine without re-rendering React on every frame.
 - Follows the pointer across both axes using velocity, acceleration, and spring physics.
 - Includes velocity-reactive tail motion, a neutral direction-change bridge, and procedural idle breathing.
+- Can render an opt-in WebGL dither trail directly from the moving form's two tail tips.
 - Plays a coordinated spike pop and blink whenever its visible form is idle-ready.
 - Blinks procedurally during idle with randomized timing and occasional double blinks.
+- Rotates through distinct ambient idle moods without leaving the top-level `idle` state.
 - Supports server-side rendering and respects `prefers-reduced-motion`.
 - Ships with TypeScript declarations and no runtime dependencies beyond React.
 
 ## Installation
 
-Configure the GitHub Packages registry in your project's `.npmrc`:
+Install the latest public release directly from GitHub without a token:
+
+```bash
+npm install https://github.com/Seam-Agency/seam-mascot-react/releases/latest/download/seam-mascot-react.tgz
+```
+
+The tarball still installs under its package name, so imports remain unchanged:
+
+```tsx
+import { SeamMascot } from "@seam-agency/mascot-react";
+```
+
+### GitHub Packages
+
+The package is also published to GitHub Packages. GitHub requires authentication for npm registry downloads even when the repository and package are public. To use that registry, configure your project's `.npmrc`:
 
 ```ini
 @seam-agency:registry=https://npm.pkg.github.com
@@ -25,7 +41,7 @@ Then install the package:
 npm install @seam-agency/mascot-react
 ```
 
-Installing this private package locally requires a token with the `read:packages` permission. Keep the token out of source control and provide it through the `NODE_AUTH_TOKEN` environment variable.
+The token needs the `read:packages` permission. Keep it out of source control and provide it through the `NODE_AUTH_TOKEN` environment variable.
 
 ## Basic usage
 
@@ -46,6 +62,42 @@ export function HeroMascot() {
 ```
 
 The default SVG `viewBox` is `0 0 1200 600`. The mascot moves within this space; use CSS to control the component's rendered size.
+
+## Dither trail
+
+Enable the packaged tail effect with one boolean:
+
+```tsx
+<SeamMascot ditherTrail />
+```
+
+The effect is disabled by default. It emits from the midpoint of the two animated tail tips, follows facing and tilt, and resets cleanly during direction changes. Its color follows `bodyColor`.
+
+Use `ditherTrailIntensity` to tune the normalized density from `0` to `1`. The default is the subtle `0` preset:
+
+```tsx
+<SeamMascot ditherTrail ditherTrailIntensity={0} />
+```
+
+The implementation uses the browser's WebGL API directly, adds no runtime dependency, respects `prefers-reduced-motion`, and falls back to the regular mascot when WebGL is unavailable.
+
+`bodyColor` and `eyeColor` control the SVG mascot. `ditherTrailColor` controls the trail independently and falls back to `bodyColor` when omitted, so theme palettes stay concise:
+
+```tsx
+const mascotTheme = colorScheme === "dark"
+  ? {
+      bodyColor: "#ffffff",
+      eyeColor: "#050505",
+      ditherTrailColor: "#ffffff"
+    }
+  : {
+      bodyColor: "#050505",
+      eyeColor: "#ffffff",
+      ditherTrailColor: "#050505"
+    };
+
+<SeamMascot ditherTrail {...mascotTheme} />
+```
 
 ## Imperative API
 
@@ -70,7 +122,7 @@ export function ControlledMascot() {
 
 `moveTo` uses normalized `0..1` coordinates by default. To use SVG coordinates, pass `{ x: 800, y: 240, unit: "svg" }`.
 
-The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setState`, `setDebugState`, `send`, `getSnapshot`, and `getMachine`.
+The ref also exposes `start`, `pause`, `resume`, `playReaction`, `follow`, `setState`, `setDebugState`, `setIdleVariant`, `send`, `getSnapshot`, and `getMachine`.
 
 ## Click reaction
 
@@ -87,6 +139,22 @@ Disable the interaction or trigger it manually with the ref API:
 The reaction is skipped when `prefers-reduced-motion: reduce` is active.
 
 Independent idle blinks use a randomized `1800–5200ms` delay and `110–180ms` duration by default. Approximately 18% of them become a short double blink. The scheduler also runs in fixed idle debug mode and pauses during click reactions.
+
+## Ambient idle moods
+
+The default `idleVariant="auto"` mode gives the stationary mascot four occasional behaviors: a curious glance and tilt, a soft squish, a gentle float, and a deeper breath. Curious mode now alternates its gaze between left and right at procedural intervals instead of locking the eyes to one side. Each behavior enters and leaves through a short smooth-out transition while the machine remains in `idle`, so application logic listening to the top-level state stays stable.
+
+Lock a mood while tuning or presenting it:
+
+```tsx
+<SeamMascot idleVariant="curious" />
+```
+
+Supported values are `auto`, `rest`, `curious`, `squish`, `float`, and `deep-breath`. The imperative ref exposes the same control through `setIdleVariant`. `snapshot.idleVariant` reports the visible mood and `snapshot.idleVariantAmount` reports its current normalized envelope.
+
+The regular idle loop also plays a lighter version of the click reaction at long random intervals: the spikes expand, pull inward, and settle without entering the click-reaction state. `snapshot.ambientPulsing` and `snapshot.ambientPulseAmount` expose that motion, while `snapshot.curiousGaze` reports the live gaze from `-1` (left) to `1` (right).
+
+Ambient moods and pulses are disabled under `prefers-reduced-motion`. Their overall strength and randomized quiet intervals can be tuned through `idleMotion`.
 
 ## Debug states
 
@@ -112,7 +180,14 @@ Supported values are `auto`, `idle`, `launching`, `moving`, and `settling`.
     tipSpeed: 1.45,
     blinkMinimumDelay: 1800,
     blinkMaximumDelay: 5200,
-    doubleBlinkChance: 0.18
+    doubleBlinkChance: 0.18,
+    variantStrength: 1,
+    variantMinimumDelay: 1800,
+    variantMaximumDelay: 4200,
+    pulseStrength: 0.78,
+    pulseMinimumDelay: 4800,
+    pulseMaximumDelay: 9000,
+    pulseDuration: 500
   }}
 />
 ```

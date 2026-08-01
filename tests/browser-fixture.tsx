@@ -25,12 +25,18 @@ createRoot(container).render(
     interactive: true,
     bodyColor: "#ffffff",
     eyeColor: "#050505",
+    ditherTrail: true,
+    ditherTrailIntensity: 0,
     idleMotion: {
       blinkMinimumDelay: 180,
       blinkMaximumDelay: 280,
       blinkMinimumDuration: 130,
       blinkMaximumDuration: 180,
-      doubleBlinkChance: 0.35
+      doubleBlinkChance: 0.35,
+      variantMinimumDelay: 120,
+      variantMaximumDelay: 180,
+      pulseMinimumDelay: 30000,
+      pulseMaximumDelay: 30000
     },
     style: { width: "1200px", height: "600px", background: "#050505" },
     onStateChange: (snapshot) => snapshots.push(snapshot)

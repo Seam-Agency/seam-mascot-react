@@ -5,6 +5,8 @@ export type {
   MascotDebugState,
   MascotEvent,
   MascotIdleMotionOptions,
+  MascotIdleVariant,
+  MascotIdleVariantMode,
   MascotMachine,
   MascotMoveOptions,
   MascotMoveTarget,

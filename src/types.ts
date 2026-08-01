@@ -9,6 +9,15 @@ export type MascotState =
 
 export type MascotDebugState = Exclude<MascotState, "paused"> | "auto";
 
+export type MascotIdleVariant =
+  | "rest"
+  | "curious"
+  | "squish"
+  | "float"
+  | "deep-breath";
+
+export type MascotIdleVariantMode = MascotIdleVariant | "auto";
+
 export type MascotEvent =
   | "FOLLOW"
   | "MOVE_TO"
@@ -78,6 +87,20 @@ export interface MascotIdleMotionOptions {
   blinkMaximumDuration?: number;
   /** Chance of a short second blink, from 0 to 1. */
   doubleBlinkChance?: number;
+  /** Overall strength multiplier for ambient idle variants. */
+  variantStrength?: number;
+  /** Minimum delay between ambient idle variants, in milliseconds. */
+  variantMinimumDelay?: number;
+  /** Maximum delay between ambient idle variants, in milliseconds. */
+  variantMaximumDelay?: number;
+  /** Strength of the occasional click-like idle pulse. */
+  pulseStrength?: number;
+  /** Minimum random delay between ambient pulses, in milliseconds. */
+  pulseMinimumDelay?: number;
+  /** Maximum random delay between ambient pulses, in milliseconds. */
+  pulseMaximumDelay?: number;
+  /** Ambient pulse duration, in milliseconds. */
+  pulseDuration?: number;
 }
 
 export interface MascotSnapshot {
@@ -102,6 +125,12 @@ export interface MascotSnapshot {
   readonly reactionAmount: number;
   readonly blinkAmount: number;
   readonly randomBlinking: boolean;
+  readonly idleVariant: MascotIdleVariant;
+  readonly idleVariantAmount: number;
+  /** Procedural curious gaze from -1 (left) to 1 (right). */
+  readonly curiousGaze: number;
+  readonly ambientPulsing: boolean;
+  readonly ambientPulseAmount: number;
   readonly debugState: Exclude<MascotDebugState, "auto"> | null;
 }
 
@@ -129,6 +158,7 @@ export interface MascotMachine {
   send(event: MascotEvent, payload?: Record<string, unknown>): MascotMachine;
   setState(state: MascotState, options?: MascotMoveOptions): MascotMachine;
   setDebugState(state: MascotDebugState | null): MascotMachine;
+  setIdleVariant(variant: MascotIdleVariantMode): MascotMachine;
   follow(x: number, y: number): MascotMachine;
   moveTo(
     target: number | MascotMoveTarget,
@@ -150,6 +180,7 @@ export interface SeamMascotHandle {
   moveTo(target: number | MascotMoveTarget, options?: MascotMoveOptions): void;
   setState(state: MascotState, options?: MascotMoveOptions): void;
   setDebugState(state: MascotDebugState | null): void;
+  setIdleVariant(variant: MascotIdleVariantMode): void;
   send(event: MascotEvent, payload?: Record<string, unknown>): void;
   getSnapshot(): MascotSnapshot | null;
   getMachine(): MascotMachine | null;
@@ -168,6 +199,14 @@ export interface SeamMascotProps
   reactionOnClick?: boolean;
   /** Lock the morph for visual debugging, or use `auto` for normal behavior. */
   debugState?: MascotDebugState;
+  /** Randomize stationary ambient behavior, or lock a variant for debugging. */
+  idleVariant?: MascotIdleVariantMode;
+  /** Render the velocity trail from the moving form's rear tail edge. */
+  ditherTrail?: boolean;
+  /** Normalized dither density from 0 (subtle) to 1 (dense). */
+  ditherTrailIntensity?: number;
+  /** Dither pixel color. Defaults to the current bodyColor. */
+  ditherTrailColor?: string;
   bodyColor?: string;
   eyeColor?: string;
   bounds?: Partial<MascotBounds>;

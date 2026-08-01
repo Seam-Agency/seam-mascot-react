@@ -20,6 +20,43 @@ const DEBUG_MORPH_TARGETS = Object.freeze({
 // Below this amount the mascot still reads as its idle star form, even when
 // a nearby pointer target keeps the runtime state labelled as moving.
 const REACTION_MORPH_THRESHOLD = 0.18;
+// Pull the trail origin away from the sharp tail tips so the dither appears
+// to emerge from inside the moving silhouette rather than touch its edge.
+const DITHER_TRAIL_TIP_INSET = 0.24;
+
+const IDLE_VARIANTS = Object.freeze([
+  "curious",
+  "squish",
+  "float",
+  "deep-breath"
+]);
+const IDLE_VARIANT_VALUES = Object.freeze(["rest", ...IDLE_VARIANTS]);
+const IDLE_VARIANT_PROFILES = Object.freeze({
+  curious: Object.freeze({
+    attack: 500,
+    holdMinimum: 1600,
+    holdMaximum: 2600,
+    release: 500
+  }),
+  squish: Object.freeze({
+    attack: 350,
+    holdMinimum: 450,
+    holdMaximum: 850,
+    release: 500
+  }),
+  float: Object.freeze({
+    attack: 500,
+    holdMinimum: 1300,
+    holdMaximum: 2200,
+    release: 500
+  }),
+  "deep-breath": Object.freeze({
+    attack: 500,
+    holdMinimum: 1500,
+    holdMaximum: 2400,
+    release: 500
+  })
+});
 
 const EVENTS = Object.freeze({
   FOLLOW: "FOLLOW",
@@ -438,6 +475,43 @@ class MascotStateMachine {
       doubleBlinkChance: clamp01(
         options.idleMotion?.doubleBlinkChance ??
           readNumber("--mascot-double-blink-chance", 0.18)
+      ),
+      variantStrength: clamp(
+        options.idleMotion?.variantStrength ??
+          readNumber("--mascot-idle-variant-strength", 1),
+        0,
+        2
+      ),
+      variantMinimumDelay: Math.max(
+        500,
+        options.idleMotion?.variantMinimumDelay ??
+          readDuration("--mascot-idle-variant-min-delay", 1800)
+      ),
+      variantMaximumDelay: Math.max(
+        500,
+        options.idleMotion?.variantMaximumDelay ??
+          readDuration("--mascot-idle-variant-max-delay", 4200)
+      ),
+      pulseStrength: clamp(
+        options.idleMotion?.pulseStrength ??
+          readNumber("--mascot-idle-pulse-strength", 0.78),
+        0,
+        2
+      ),
+      pulseMinimumDelay: Math.max(
+        1000,
+        options.idleMotion?.pulseMinimumDelay ??
+          readDuration("--mascot-idle-pulse-min-delay", 4800)
+      ),
+      pulseMaximumDelay: Math.max(
+        1000,
+        options.idleMotion?.pulseMaximumDelay ??
+          readDuration("--mascot-idle-pulse-max-delay", 9000)
+      ),
+      pulseDuration: Math.max(
+        250,
+        options.idleMotion?.pulseDuration ??
+          readDuration("--mascot-idle-pulse-duration", 500)
       )
     };
     this.idleMotion.blinkMaximumDelay = Math.max(
@@ -447,6 +521,14 @@ class MascotStateMachine {
     this.idleMotion.blinkMaximumDuration = Math.max(
       this.idleMotion.blinkMinimumDuration,
       this.idleMotion.blinkMaximumDuration
+    );
+    this.idleMotion.variantMaximumDelay = Math.max(
+      this.idleMotion.variantMinimumDelay,
+      this.idleMotion.variantMaximumDelay
+    );
+    this.idleMotion.pulseMaximumDelay = Math.max(
+      this.idleMotion.pulseMinimumDelay,
+      this.idleMotion.pulseMaximumDelay
     );
 
     this.physics = {
@@ -580,6 +662,31 @@ class MascotStateMachine {
     this.hasTarget = false;
     this.debugState = null;
     this.idleElapsed = 0;
+    this.idleVariantMode = IDLE_VARIANT_VALUES.includes(options.idleVariant)
+      ? options.idleVariant
+      : "auto";
+    this.idleVariant = "rest";
+    this.previousIdleVariant = "rest";
+    this.idleVariantPhase = "waiting";
+    this.idleVariantElapsed = 0;
+    this.idleVariantMotionElapsed = 0;
+    this.idleVariantDelay = 0;
+    this.idleVariantAmount = 0;
+    this.idleVariantDirection = Math.random() < 0.5 ? -1 : 1;
+    this.idleVariantAttackDuration = 500;
+    this.idleVariantHoldDuration = 1000;
+    this.idleVariantReleaseDuration = 500;
+    this.curiousGaze = 0;
+    this.curiousGazeFrom = 0;
+    this.curiousGazeTarget = 0;
+    this.curiousGazeElapsed = 0;
+    this.curiousGazeDuration = 500;
+    this.curiousGazeDelay = 0;
+    this.curiousGazeMoving = false;
+    this.ambientPulseActive = false;
+    this.ambientPulseElapsed = 0;
+    this.ambientPulseDelay = 0;
+    this.ambientPulseAmount = 0;
     this.reactionElapsed = 0;
     this.reactionProgress = 0;
     this.reactionAmount = 0;
@@ -588,6 +695,7 @@ class MascotStateMachine {
     this.randomBlinkActive = false;
     this.randomBlinkElapsed = 0;
     this.randomBlinkDelay = 0;
+    this.trailSource = options.trailSource ?? null;
     this.randomBlinkDuration = 140;
     this.randomBlinkAmount = 0;
     this.pendingRandomBlinks = 0;
@@ -600,6 +708,8 @@ class MascotStateMachine {
     this.destroyed = false;
     this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     this.resetIdleTips();
+    this.resetIdleVariant();
+    this.scheduleAmbientPulse();
     this.scheduleRandomBlink();
 
     this.tick = this.tick.bind(this);
@@ -608,6 +718,9 @@ class MascotStateMachine {
     this.root.dataset.state = STATES.IDLE;
     this.root.dataset.reacting = "false";
     this.root.dataset.blinking = "false";
+    this.root.dataset.idleVariant = this.idleVariant;
+    this.root.dataset.curiousGaze = "center";
+    this.root.dataset.ambientPulsing = "false";
     this.render();
   }
 
@@ -657,6 +770,11 @@ class MascotStateMachine {
       reactionAmount: this.reactionAmount,
       blinkAmount: Math.max(this.blinkAmount, this.randomBlinkAmount),
       randomBlinking: this.randomBlinkActive,
+      idleVariant: this.idleVariant,
+      idleVariantAmount: this.idleVariantAmount,
+      curiousGaze: this.curiousGaze,
+      ambientPulsing: this.ambientPulseActive,
+      ambientPulseAmount: this.ambientPulseAmount,
       debugState: this.debugState
     });
   }
@@ -749,6 +867,35 @@ class MascotStateMachine {
       this.render();
       return this;
     }
+    this.lastFrameTime = performance.now();
+    this.queueFrame();
+    return this;
+  }
+
+  setIdleVariant(nextVariant) {
+    const normalized = nextVariant ?? "auto";
+    if (
+      normalized !== "auto" &&
+      !IDLE_VARIANT_VALUES.includes(normalized)
+    ) {
+      throw new Error(
+        "MascotStateMachine: unsupported idle variant: " + normalized
+      );
+    }
+
+    if (this.idleVariantMode === normalized) return this;
+    this.idleVariantMode = normalized;
+    if (
+      this.state === STATES.IDLE &&
+      !this.reacting &&
+      !this.reducedMotion.matches
+    ) {
+      this.resetIdleVariant();
+    } else {
+      this.cancelIdleVariant();
+    }
+    this.emit();
+    this.render();
     this.lastFrameTime = performance.now();
     this.queueFrame();
     return this;
@@ -852,6 +999,8 @@ class MascotStateMachine {
     this.reactionAmount = 0;
     this.blinkAmount = 0;
     this.root.dataset.reacting = "true";
+    this.cancelIdleVariant();
+    this.cancelAmbientPulse();
 
     if (this.debugState === null) {
       this.hasTarget = false;
@@ -926,7 +1075,92 @@ class MascotStateMachine {
     if (progress < 1) return;
     this.resetReaction();
     this.resetIdleTips();
+    if (this.state === STATES.IDLE) {
+      this.resetIdleVariant();
+      this.scheduleAmbientPulse();
+    }
     this.scheduleRandomBlink();
+    this.emit();
+  }
+
+  cancelAmbientPulse() {
+    this.ambientPulseActive = false;
+    this.ambientPulseElapsed = 0;
+    this.ambientPulseDelay = 0;
+    this.ambientPulseAmount = 0;
+    this.root.dataset.ambientPulsing = "false";
+  }
+
+  scheduleAmbientPulse(delay) {
+    this.cancelAmbientPulse();
+    this.ambientPulseDelay = this.idleMotion.pulseStrength > 0
+      ? delay ?? randomBetween(
+          this.idleMotion.pulseMinimumDelay,
+          this.idleMotion.pulseMaximumDelay
+        )
+      : Number.POSITIVE_INFINITY;
+  }
+
+  startAmbientPulse() {
+    if (
+      this.state !== STATES.IDLE ||
+      this.reacting ||
+      this.reducedMotion.matches ||
+      this.idleMotion.pulseStrength <= 0
+    ) {
+      return;
+    }
+
+    this.ambientPulseActive = true;
+    this.ambientPulseElapsed = 0;
+    this.ambientPulseAmount = 0;
+    this.root.dataset.ambientPulsing = "true";
+    this.emit();
+  }
+
+  updateAmbientPulse(deltaTime) {
+    if (
+      this.state !== STATES.IDLE ||
+      this.reacting ||
+      this.reducedMotion.matches
+    ) {
+      return;
+    }
+
+    if (!this.ambientPulseActive) {
+      this.ambientPulseDelay -= deltaTime;
+      if (this.ambientPulseDelay <= 0) this.startAmbientPulse();
+      return;
+    }
+
+    this.ambientPulseElapsed += deltaTime;
+    const progress = clamp01(
+      this.ambientPulseElapsed / this.idleMotion.pulseDuration
+    );
+    const strength = this.idleMotion.pulseStrength;
+
+    if (progress < 0.28) {
+      this.ambientPulseAmount = lerp(
+        0,
+        0.115 * strength,
+        smoothOut(progress / 0.28)
+      );
+    } else if (progress < 0.68) {
+      this.ambientPulseAmount = lerp(
+        0.115 * strength,
+        -0.055 * strength,
+        smootherstep((progress - 0.28) / 0.4)
+      );
+    } else {
+      this.ambientPulseAmount = lerp(
+        -0.055 * strength,
+        0,
+        smoothOut((progress - 0.68) / 0.32)
+      );
+    }
+
+    if (progress < 1) return;
+    this.scheduleAmbientPulse();
     this.emit();
   }
 
@@ -1054,6 +1288,198 @@ class MascotStateMachine {
     this.turnProgress = 0;
     this.turning = false;
     this.visualTilt = 0;
+    this.emit();
+  }
+
+  cancelIdleVariant() {
+    this.idleVariant = "rest";
+    this.idleVariantPhase = "waiting";
+    this.idleVariantElapsed = 0;
+    this.idleVariantMotionElapsed = 0;
+    this.idleVariantAmount = 0;
+    this.idleVariantDelay = 0;
+    this.resetCuriousGaze();
+    this.root.dataset.idleVariant = "rest";
+  }
+
+  resetCuriousGaze() {
+    this.curiousGaze = 0;
+    this.curiousGazeFrom = 0;
+    this.curiousGazeTarget = 0;
+    this.curiousGazeElapsed = 0;
+    this.curiousGazeDuration = 500;
+    this.curiousGazeDelay = 0;
+    this.curiousGazeMoving = false;
+    this.root.dataset.curiousGaze = "center";
+  }
+
+  startCuriousGaze(nextDirection) {
+    const currentDirection = Math.abs(this.curiousGaze) > 0.2
+      ? Math.sign(this.curiousGaze)
+      : this.idleVariantDirection;
+    this.curiousGazeFrom = this.curiousGaze;
+    this.curiousGazeTarget = nextDirection ?? -currentDirection;
+    this.curiousGazeElapsed = 0;
+    this.curiousGazeDuration = randomBetween(420, 580);
+    this.curiousGazeMoving = true;
+  }
+
+  updateCuriousGaze(deltaTime) {
+    if (this.idleVariant !== "curious") return;
+
+    if (!this.curiousGazeMoving) {
+      this.curiousGazeDelay -= deltaTime;
+      if (this.curiousGazeDelay <= 0) this.startCuriousGaze();
+      return;
+    }
+
+    this.curiousGazeElapsed += deltaTime;
+    const progress = clamp01(
+      this.curiousGazeElapsed / Math.max(1, this.curiousGazeDuration)
+    );
+    this.curiousGaze = lerp(
+      this.curiousGazeFrom,
+      this.curiousGazeTarget,
+      smoothOut(progress)
+    );
+    this.root.dataset.curiousGaze = this.curiousGaze < -0.2
+      ? "left"
+      : this.curiousGaze > 0.2
+        ? "right"
+        : "center";
+
+    if (progress < 1) return;
+    this.curiousGaze = this.curiousGazeTarget;
+    this.curiousGazeMoving = false;
+    this.curiousGazeDelay = randomBetween(380, 760);
+  }
+
+  configureIdleVariant(variant) {
+    const profile = IDLE_VARIANT_PROFILES[variant];
+    const timingVariance = randomBetween(0.92, 1.08);
+    this.idleVariantAttackDuration = profile.attack * timingVariance;
+    this.idleVariantHoldDuration = randomBetween(
+      profile.holdMinimum,
+      profile.holdMaximum
+    );
+    this.idleVariantReleaseDuration =
+      profile.release * randomBetween(0.92, 1.08);
+    this.idleVariantDirection = Math.random() < 0.5 ? -1 : 1;
+  }
+
+  resetIdleVariant() {
+    this.cancelIdleVariant();
+
+    if (
+      this.reducedMotion.matches ||
+      this.idleVariantMode === "rest"
+    ) {
+      return;
+    }
+
+    if (this.idleVariantMode === "auto") {
+      this.idleVariantDelay = randomBetween(
+        this.idleMotion.variantMinimumDelay,
+        this.idleMotion.variantMaximumDelay
+      );
+      return;
+    }
+
+    this.idleVariant = this.idleVariantMode;
+    this.idleVariantPhase = "attack";
+    this.configureIdleVariant(this.idleVariant);
+    if (this.idleVariant === "curious") {
+      this.startCuriousGaze(this.idleVariantDirection);
+    }
+    this.root.dataset.idleVariant = this.idleVariant;
+  }
+
+  startIdleVariant() {
+    const candidates = IDLE_VARIANTS.filter(
+      (variant) => variant !== this.previousIdleVariant
+    );
+    const nextVariant = candidates[
+      Math.floor(Math.random() * candidates.length)
+    ];
+
+    this.idleVariant = nextVariant;
+    this.previousIdleVariant = nextVariant;
+    this.idleVariantPhase = "attack";
+    this.idleVariantElapsed = 0;
+    this.idleVariantMotionElapsed = 0;
+    this.idleVariantAmount = 0;
+    this.configureIdleVariant(nextVariant);
+    if (nextVariant === "curious") {
+      this.startCuriousGaze(this.idleVariantDirection);
+    }
+    this.root.dataset.idleVariant = nextVariant;
+    this.emit();
+  }
+
+  updateIdleVariant(deltaTime) {
+    if (
+      this.state !== STATES.IDLE ||
+      this.reacting ||
+      this.reducedMotion.matches ||
+      this.idleVariantMode === "rest"
+    ) {
+      return;
+    }
+
+    if (this.idleVariantPhase === "waiting") {
+      this.idleVariantDelay -= deltaTime;
+      if (this.idleVariantDelay <= 0 && this.idleVariantMode === "auto") {
+        this.startIdleVariant();
+      }
+      return;
+    }
+
+    this.updateCuriousGaze(deltaTime);
+    this.idleVariantElapsed += deltaTime;
+    this.idleVariantMotionElapsed += deltaTime;
+
+    if (this.idleVariantPhase === "attack") {
+      const progress = clamp01(
+        this.idleVariantElapsed /
+          Math.max(1, this.idleVariantAttackDuration)
+      );
+      this.idleVariantAmount = smoothOut(progress);
+      if (progress < 1) return;
+
+      this.idleVariantAmount = 1;
+      this.idleVariantElapsed = 0;
+      this.idleVariantPhase = this.idleVariantMode === "auto"
+        ? "hold"
+        : "locked";
+      this.emit();
+      return;
+    }
+
+    if (this.idleVariantPhase === "locked") {
+      this.idleVariantAmount = 1;
+      return;
+    }
+
+    if (this.idleVariantPhase === "hold") {
+      this.idleVariantAmount = 1;
+      if (this.idleVariantElapsed < this.idleVariantHoldDuration) return;
+      this.idleVariantElapsed = 0;
+      this.idleVariantPhase = "release";
+      return;
+    }
+
+    const progress = clamp01(
+      this.idleVariantElapsed /
+        Math.max(1, this.idleVariantReleaseDuration)
+    );
+    this.idleVariantAmount = 1 - smoothOut(progress);
+    if (progress < 1) return;
+
+    this.cancelIdleVariant();
+    this.idleVariantDelay = randomBetween(
+      this.idleMotion.variantMinimumDelay,
+      this.idleMotion.variantMaximumDelay
+    );
     this.emit();
   }
 
@@ -1188,6 +1614,7 @@ class MascotStateMachine {
     const deltaSeconds = deltaTime / 1000;
     this.updateReaction(deltaTime);
     this.updateRandomBlink(deltaTime);
+    this.updateAmbientPulse(deltaTime);
 
     if (this.debugState !== null) {
       this.updateTailMotion(deltaTime);
@@ -1203,7 +1630,10 @@ class MascotStateMachine {
       if (this.morph > 0.9995) this.morph = 1;
       if (this.debugState === STATES.IDLE) {
         this.idleElapsed += deltaTime;
-        if (!this.reacting) this.updateIdleTips(deltaTime);
+        if (!this.reacting) {
+          this.updateIdleTips(deltaTime);
+          this.updateIdleVariant(deltaTime);
+        }
       } else {
         this.idleElapsed = 0;
       }
@@ -1347,7 +1777,10 @@ class MascotStateMachine {
 
     if (nextState === STATES.IDLE) {
       this.idleElapsed += deltaTime;
-      if (!this.reacting) this.updateIdleTips(deltaTime);
+      if (!this.reacting) {
+        this.updateIdleTips(deltaTime);
+        this.updateIdleVariant(deltaTime);
+      }
     }
   }
 
@@ -1401,8 +1834,58 @@ class MascotStateMachine {
     const breathProgress = breathPosition < 0.42
       ? smoothstep(breathPosition / 0.42)
       : 1 - smoothstep((breathPosition - 0.42) / 0.58);
+    const idleVariantAmount =
+      idleEnvelope *
+      this.idleVariantAmount *
+      this.idleMotion.variantStrength;
+    const idleVariantTime = this.idleVariantMotionElapsed / 1000;
+    let variantOffsetX = 0;
+    let variantOffsetY = 0;
+    let variantRotation = 0;
+    let variantScaleX = 1;
+    let variantScaleY = 1;
+    let variantEyeOffsetX = 0;
+    let variantEyeOffsetY = 0;
+    let breathDepth = 1;
+
+    if (this.idleVariant === "curious") {
+      const curiousDrift = 0.88 + Math.sin(idleVariantTime * 2.1) * 0.12;
+      const curiousAmount = idleVariantAmount * curiousDrift;
+      variantOffsetX = this.idleVariantDirection * curiousAmount * 1.8;
+      variantOffsetY = -curiousAmount * 0.8;
+      variantRotation = this.idleVariantDirection * curiousAmount * 4.5;
+      variantScaleX = 1 + curiousAmount * 0.012;
+      variantScaleY = 1 - curiousAmount * 0.008;
+      variantEyeOffsetX =
+        this.curiousGaze * idleVariantAmount * 2.9;
+      variantEyeOffsetY = -curiousAmount * 0.45;
+    } else if (this.idleVariant === "squish") {
+      const squishPulse = 0.82 + Math.sin(idleVariantTime * 4.6) * 0.18;
+      const squishAmount = idleVariantAmount * squishPulse;
+      variantOffsetY = squishAmount * 1.4;
+      variantScaleX = 1 + squishAmount * 0.062;
+      variantScaleY = 1 - squishAmount * 0.055;
+      variantEyeOffsetY = squishAmount * 0.65;
+    } else if (this.idleVariant === "float") {
+      const floatWave = Math.sin(idleVariantTime * 2.25);
+      variantOffsetY = idleVariantAmount * (-2.2 + floatWave * 1.25);
+      variantOffsetX =
+        this.idleVariantDirection * idleVariantAmount * floatWave * 0.55;
+      variantRotation =
+        this.idleVariantDirection * idleVariantAmount * (1.4 + floatWave * 0.7);
+      variantScaleX = 1 - idleVariantAmount * 0.008;
+      variantScaleY = 1 + idleVariantAmount * 0.014;
+    } else if (this.idleVariant === "deep-breath") {
+      breathDepth += idleVariantAmount * 1.15;
+      variantOffsetY = -idleVariantAmount * breathProgress * 1.15;
+      variantScaleX = 1 + idleVariantAmount * breathProgress * 0.008;
+    }
+
     const breathAmount =
-      idleEnvelope * breathProgress * this.idleMotion.breathAmplitude;
+      idleEnvelope *
+      breathProgress *
+      this.idleMotion.breathAmplitude *
+      breathDepth;
     const breathScaleX = 1 + breathAmount * 0.72;
     const breathScaleY = 1 + breathAmount;
     const speedScale = this.speed / this.physics.maximumSpeed;
@@ -1480,7 +1963,9 @@ class MascotStateMachine {
         y *= 1 + radialOffset;
       }
 
-      if (this.reactionAmount !== 0) {
+      const combinedPulseAmount =
+        this.reactionAmount + this.ambientPulseAmount;
+      if (combinedPulseAmount !== 0) {
         let reactionInfluence = 0;
         for (const tip of this.idleTipModel.tips) {
           reactionInfluence = Math.max(
@@ -1489,7 +1974,7 @@ class MascotStateMachine {
           );
         }
         const reactionScale =
-          1 + this.reactionAmount * reactionInfluence;
+          1 + combinedPulseAmount * reactionInfluence;
         x *= reactionScale;
         y *= reactionScale;
       }
@@ -1529,7 +2014,8 @@ class MascotStateMachine {
           starEye[pointIndex].y,
           motionEyeY,
           eyeMorph
-        );
+        ) + variantEyeOffsetY;
+        buffer[pointIndex].x += variantEyeOffsetX;
       }
 
       if (combinedBlinkAmount > 0) {
@@ -1544,15 +2030,20 @@ class MascotStateMachine {
     }
 
     const rotation =
-      (this.visualTilt * 180 / Math.PI) * smootherstep(this.morph);
-    const scaleX = breathScaleX * (1 + speedScale * 0.025);
-    const scaleY = breathScaleY * (1 - speedScale * 0.012);
+      (this.visualTilt * 180 / Math.PI) * smootherstep(this.morph) +
+      variantRotation;
+    const scaleX =
+      breathScaleX * variantScaleX * (1 + speedScale * 0.025);
+    const scaleY =
+      breathScaleY * variantScaleY * (1 - speedScale * 0.012);
+    const renderPositionX = this.position.x + variantOffsetX;
+    const renderPositionY = this.position.y + variantOffsetY;
     this.root.setAttribute(
       "transform",
       "translate(" +
-        formatNumber(this.position.x) +
+        formatNumber(renderPositionX) +
         " " +
-        formatNumber(this.position.y) +
+        formatNumber(renderPositionY) +
         ") rotate(" +
         formatNumber(rotation) +
         ") scale(" +
@@ -1561,6 +2052,34 @@ class MascotStateMachine {
         formatNumber(scaleY, 4) +
         ")"
     );
+
+    if (this.trailSource) {
+      const firstTail = tailModel.tails[0];
+      const secondTail = tailModel.tails[1];
+      const firstTip = bodyBuffer[firstTail.tipIndex];
+      const secondTip = bodyBuffer[secondTail.tipIndex];
+      const tipMidpointX = (firstTip.x + secondTip.x) / 2;
+      const tipMidpointY = (firstTip.y + secondTip.y) / 2;
+      const localTailX = tipMidpointX * (1 - DITHER_TRAIL_TIP_INSET);
+      const localTailY = tipMidpointY * (1 - DITHER_TRAIL_TIP_INSET);
+      const rotationRadians = rotation * Math.PI / 180;
+      const cosine = Math.cos(rotationRadians);
+      const sine = Math.sin(rotationRadians);
+      const scaledTailX = localTailX * scaleX;
+      const scaledTailY = localTailY * scaleY;
+      const worldTailX = renderPositionX +
+        scaledTailX * cosine - scaledTailY * sine;
+      const worldTailY = renderPositionY +
+        scaledTailX * sine + scaledTailY * cosine;
+
+      this.trailSource.x = clamp01(worldTailX / 1200);
+      this.trailSource.y = 1 - clamp01(worldTailY / 600);
+      this.trailSource.active =
+        !this.turning &&
+        this.morph > 0.12 &&
+        this.speed > 2 &&
+        this.state !== STATES.PAUSED;
+    }
   }
 
   changeState(nextState) {
@@ -1578,8 +2097,14 @@ class MascotStateMachine {
     if (nextState === STATES.IDLE) {
       this.idleElapsed = 0;
       this.resetIdleTips();
-      if (!this.reacting) this.scheduleRandomBlink();
+      this.resetIdleVariant();
+      if (!this.reacting) {
+        this.scheduleRandomBlink();
+        this.scheduleAmbientPulse();
+      }
     } else {
+      this.cancelIdleVariant();
+      this.cancelAmbientPulse();
       this.scheduleRandomBlink();
     }
     this.emit();

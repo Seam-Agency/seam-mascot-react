@@ -36,6 +36,9 @@ buildSync({
   const page = await browser.newPage({ viewport: { width: 1200, height: 600 } });
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") console.error(message.text());
+  });
 
   try {
     await page.setContent(
@@ -45,11 +48,23 @@ buildSync({
     await page.waitForFunction(() => {
       const api = window.mascotSmoke?.ref.current;
       return api?.getSnapshot()?.state === "idle" &&
-        document.querySelector('[data-seam-mascot] g > path')?.getAttribute("d");
+        document.querySelector('[data-seam-mascot] g > path')?.getAttribute("d") &&
+        document.querySelector('[data-seam-dither-canvas]');
     });
+    assert.equal(
+      await page.locator('[data-seam-dither-canvas]').getAttribute("data-dither-status"),
+      "ready",
+      "Dither WebGL shader should initialize"
+    );
+
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("rest")
+    );
 
     const initial = await page.evaluate(() => window.mascotSmoke.ref.current.getSnapshot());
     assert.equal(initial.state, "idle");
+    assert.equal(initial.idleVariant, "rest");
+    assert.equal(initial.idleVariantAmount, 0);
     assert.equal(initial.canReact, true);
     assert.deepEqual(initial.position, { x: 600, y: 300 });
     const idleTipTiming = await page.evaluate(() => {
@@ -91,6 +106,129 @@ buildSync({
     );
     await page.waitForFunction(() =>
       window.mascotSmoke.ref.current?.getSnapshot()?.randomBlinking === false
+    );
+
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("curious")
+    );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "curious" &&
+        snapshot.idleVariantAmount > 0.98 &&
+        Math.abs(snapshot.curiousGaze) > 0.8;
+    });
+    const curiousIdle = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const transform = machine.root.getAttribute("transform");
+      const rotation = Number.parseFloat(
+        transform.match(/rotate\(([-\d.]+)/)?.[1] ?? "0"
+      );
+      return {
+        snapshot: machine.getSnapshot(),
+        dataVariant: machine.root.dataset.idleVariant,
+        dataGaze: machine.root.dataset.curiousGaze,
+        rotation,
+        eyeOffsetX:
+          machine.geometry.eyeBuffers[0][0].x -
+          machine.geometry.star.eyes[0][0].x
+      };
+    });
+    assert.equal(curiousIdle.snapshot.state, "idle");
+    assert.equal(curiousIdle.dataVariant, "curious");
+    assert.ok(Math.abs(curiousIdle.rotation) > 2.5);
+    assert.ok(Math.abs(curiousIdle.eyeOffsetX) > 1.5);
+    assert.ok(Math.abs(curiousIdle.snapshot.curiousGaze) > 0.8);
+    const initialGazeSign = Math.sign(curiousIdle.snapshot.curiousGaze);
+    await page.waitForFunction((gazeSign) => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant === "curious" &&
+        snapshot.curiousGaze * gazeSign < -0.8;
+    }, initialGazeSign);
+    const oppositeCuriousGaze = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      return {
+        gaze: machine.getSnapshot().curiousGaze,
+        dataGaze: machine.root.dataset.curiousGaze,
+        eyeOffsetX:
+          machine.geometry.eyeBuffers[0][0].x -
+          machine.geometry.star.eyes[0][0].x
+      };
+    });
+    assert.equal(
+      Math.sign(oppositeCuriousGaze.gaze),
+      -initialGazeSign,
+      "Curious gaze should alternate left and right"
+    );
+    assert.equal(
+      Math.sign(oppositeCuriousGaze.eyeOffsetX),
+      -Math.sign(curiousIdle.eyeOffsetX)
+    );
+    assert.notEqual(oppositeCuriousGaze.dataGaze, curiousIdle.dataGaze);
+
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("auto")
+    );
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.idleVariant !== "rest" &&
+        snapshot.idleVariantAmount > 0.6;
+    });
+    const automaticIdle = await page.evaluate(() =>
+      window.mascotSmoke.ref.current.getSnapshot()
+    );
+    assert.ok(
+      ["curious", "squish", "float", "deep-breath"].includes(
+        automaticIdle.idleVariant
+      )
+    );
+    await page.evaluate(() =>
+      window.mascotSmoke.ref.current.setIdleVariant("rest")
+    );
+
+    await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      machine.idleTipStates.forEach((state) => {
+        state.active = false;
+        state.pulse = 0;
+        state.delay = 10000;
+      });
+      machine.ambientPulseDelay = 1;
+    });
+    await page.waitForFunction(() => {
+      const snapshot = window.mascotSmoke.ref.current?.getSnapshot();
+      return snapshot?.ambientPulsing && snapshot.ambientPulseAmount > 0.075;
+    });
+    const ambientPulseOutward = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      return {
+        snapshot: machine.getSnapshot(),
+        dataPulsing: machine.root.dataset.ambientPulsing,
+        tipRatios: machine.idleTipModel.tips.map(({ tipIndex }) => {
+          const source = machine.geometry.star.body[tipIndex];
+          const current = machine.geometry.bodyBuffer[tipIndex];
+          return Math.hypot(current.x, current.y) / Math.hypot(source.x, source.y);
+        })
+      };
+    });
+    assert.equal(ambientPulseOutward.snapshot.state, "idle");
+    assert.equal(ambientPulseOutward.snapshot.reacting, false);
+    assert.equal(ambientPulseOutward.dataPulsing, "true");
+    assert.ok(ambientPulseOutward.tipRatios.every((ratio) => ratio > 1.06));
+
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.ambientPulseAmount < -0.025
+    );
+    const ambientPulseInward = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      return machine.idleTipModel.tips.map(({ tipIndex }) => {
+        const source = machine.geometry.star.body[tipIndex];
+        const current = machine.geometry.bodyBuffer[tipIndex];
+        return Math.hypot(current.x, current.y) / Math.hypot(source.x, source.y);
+      });
+    });
+    assert.ok(ambientPulseInward.every((ratio) => ratio < 0.985));
+    await page.waitForFunction(() =>
+      window.mascotSmoke.ref.current?.getSnapshot()?.ambientPulsing === false
     );
 
     await page.mouse.click(600, 300);
@@ -184,6 +322,34 @@ buildSync({
     const moving = await page.evaluate(() => window.mascotSmoke.ref.current.getSnapshot());
     assert.ok(moving.speed > 0, "Pointer follow should produce velocity");
     assert.ok(moving.tailRate > 3.2, "Tail rate should respond to velocity");
+    const trailSource = await page.evaluate(() => {
+      const machine = window.mascotSmoke.ref.current.getMachine();
+      const tailModel = machine.facing === 1
+        ? machine.tailModels.right
+        : machine.tailModels.left;
+      const tailTips = tailModel.tails.map(({ tipIndex }) =>
+        machine.geometry.bodyBuffer[tipIndex]
+      );
+      return {
+        source: { ...machine.trailSource },
+        centerX: machine.position.x / 1200,
+        facing: machine.facing,
+        tailLocalX: (tailTips[0].x + tailTips[1].x) / 2
+      };
+    });
+    assert.equal(trailSource.source.active, true);
+    assert.ok(
+      trailSource.facing === 1
+        ? trailSource.source.x < trailSource.centerX
+        : trailSource.source.x > trailSource.centerX,
+      "Dither source should sit behind the mascot center"
+    );
+    assert.ok(
+      trailSource.facing === 1
+        ? trailSource.tailLocalX < 0
+        : trailSource.tailLocalX > 0,
+      "Detected tail midpoint should be rear-facing"
+    );
 
     await page.evaluate(() => {
       window.mascotSmoke.snapshots.length = 0;
