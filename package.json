@@ -22,6 +22,7 @@
   "sideEffects": false,
   "scripts": {
     "sync:workspace": "node ./scripts/sync-workspace.mjs",
+    "build:icons": "node ./scripts/build-icons.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test:ssr": "node ./tests/ssr.mjs",

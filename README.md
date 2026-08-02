@@ -1,6 +1,18 @@
+<p align="center">
+  <img
+    src="https://raw.githubusercontent.com/Seam-Agency/seam-mascot-react/main/assets/icon/seam-mascot-icon.svg"
+    width="128"
+    height="128"
+    alt="Seam mascot"
+  />
+</p>
+
 # @seam-agency/mascot-react
 
 A lightweight React component for Seam's procedural SVG mascot. It morphs from an organic idle star into a directional motion form.
+
+Repository-ready SVG, 1024px, and 512px icon exports are available in
+[`assets/icon`](https://github.com/Seam-Agency/seam-mascot-react/tree/main/assets/icon).
 
 - Runs animation through a single `requestAnimationFrame` state machine without re-rendering React on every frame.
 - Follows the pointer across both axes using velocity, acceleration, and spring physics.

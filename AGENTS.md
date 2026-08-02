@@ -54,8 +54,15 @@ a consumer application. Those actions require an explicit user request.
 | `tests/browser-smoke.cjs` | Motion and imperative runtime contract | Add behavioral assertions for state-machine changes. |
 | `docs/TOUR_DEMO.md` | Consumer product-tour guide | Keep examples aligned with the shipped API. |
 | `README.md` | Package overview and public quick-start | Keep concise; link to detailed guides. |
+| `assets/icon/` | Editable mascot icon plus 1024px and 512px exports | Keep the master geometry aligned with the current idle mascot and regenerate PNGs with `npm run build:icons`. |
 
 `dist/` is generated output. Never edit it manually. Run `npm run build`.
+
+The PNG files in `assets/icon/` are generated output, but their SVG master is
+hand-maintained. After editing `seam-mascot-icon.svg`, run
+`npm run build:icons` and commit the SVG and both PNG exports together. The
+icon directory is repository-only and must remain excluded from the npm
+tarball unless the user explicitly changes the package-content policy.
 
 ### Important synchronization warning
 
@@ -506,4 +513,3 @@ A task is complete only when:
   behavior changed;
 - the worktree contains no accidental generated or temporary files;
 - publishing has been verified remotely when the user requested a release.
-
